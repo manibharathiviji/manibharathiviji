@@ -1,0 +1,76 @@
+:root {
+  --bg: #0f172a;
+  --panel: #1e293b;
+  --panel2: #334155;
+  --text: #e2e8f0;
+  --muted: #94a3b8;
+  --accent: #38bdf8;
+  --accent2: #0ea5e9;
+  --bubble-me: #0369a1;
+  --bubble-you: #334155;
+  --danger: #ef4444;
+}
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body, #root { height: 100%; margin: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+button { font: inherit; cursor: pointer; }
+input { font: inherit; }
+
+/* ---------- Decoy world clock ---------- */
+.wc { max-width: 520px; margin: 0 auto; padding: 20px 16px 40px; }
+.wc h1 { font-size: 20px; margin: 8px 0 2px; }
+.wc .sub { color: var(--muted); font-size: 13px; margin-bottom: 18px; }
+.wc .addbar {
+  display: flex; gap: 8px; margin-bottom: 18px;
+}
+.wc .addbar input {
+  flex: 1; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--panel2);
+  background: var(--panel); color: var(--text); outline: none;
+}
+.wc .addbar button {
+  padding: 0 16px; border-radius: 12px; border: none;
+  background: var(--accent2); color: #001018; font-weight: 600;
+}
+.clockcard {
+  background: var(--panel); border-radius: 16px; padding: 16px;
+  margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;
+}
+.clockcard .city { font-size: 15px; font-weight: 600; }
+.clockcard .zone { font-size: 12px; color: var(--muted); }
+.clockcard .time { font-size: 28px; font-variant-numeric: tabular-nums; letter-spacing: 1px; }
+.clockcard .date { font-size: 12px; color: var(--muted); text-align: right; }
+.clockcard .rm { background: none; border: none; color: var(--muted); font-size: 18px; }
+
+/* ---------- Generic screens ---------- */
+.screen { max-width: 520px; margin: 0 auto; min-height: 100%; display: flex; flex-direction: column; }
+.center { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 24px; }
+.field { width: 100%; padding: 13px 14px; border-radius: 12px; border: 1px solid var(--panel2);
+  background: var(--panel); color: var(--text); outline: none; margin-bottom: 10px; }
+.btn { width: 100%; padding: 13px; border-radius: 12px; border: none; background: var(--accent2);
+  color: #001018; font-weight: 700; }
+.btn.ghost { background: transparent; color: var(--muted); font-weight: 500; }
+.err { color: var(--danger); font-size: 13px; margin: 4px 0; }
+
+/* ---------- Chat ---------- */
+.chat { display: flex; flex-direction: column; height: 100%; }
+.chat .top { display: flex; align-items: center; gap: 10px; padding: 12px 14px;
+  background: var(--panel); border-bottom: 1px solid var(--panel2); }
+.chat .top .name { font-weight: 600; }
+.chat .top .pill { font-size: 11px; color: var(--muted); }
+.chat .top .lock { margin-left: auto; background: none; border: none; color: var(--muted); font-size: 18px; }
+.chat .log { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 8px; }
+.bubble { max-width: 78%; padding: 9px 12px; border-radius: 14px; font-size: 15px; line-height: 1.35;
+  word-wrap: break-word; white-space: pre-wrap; }
+.bubble.me { align-self: flex-end; background: var(--bubble-me); border-bottom-right-radius: 4px; }
+.bubble.you { align-self: flex-start; background: var(--bubble-you); border-bottom-left-radius: 4px; }
+.bubble .meta { font-size: 10px; color: #cbd5e1aa; margin-top: 3px; text-align: right; }
+.composer { display: flex; gap: 8px; padding: 10px; border-top: 1px solid var(--panel2); background: var(--panel); }
+.composer input { flex: 1; padding: 12px 14px; border-radius: 22px; border: 1px solid var(--panel2);
+  background: var(--bg); color: var(--text); outline: none; }
+.composer button { width: 46px; border-radius: 50%; border: none; background: var(--accent2);
+  color: #001018; font-size: 18px; font-weight: 700; }
+.hint { color: var(--muted); font-size: 12px; text-align: center; padding: 10px; }
