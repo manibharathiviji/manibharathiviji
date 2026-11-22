@@ -1,78 +1,86 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { UNLOCK_CODE } from "../supabase";
+import {
+  CityRec,
+  DEFAULT_CITIES,
+  cityId,
+  flag,
+  offsetLabel,
+  offsetMinutes,
+  searchCities,
+} from "./cities";
 
-// A real, useful world clock. The "Add city" box doubles as the secret door:
-// type the unlock code there and press + to open the real app.
+const LS = "tz_cities_v2";
 
-type Zone = { city: string; tz: string };
-
-const PRESETS: Zone[] = [
-  { city: "Chennai (IST)", tz: "Asia/Kolkata" },
-  { city: "UTC", tz: "UTC" },
-  { city: "San Francisco (PST)", tz: "America/Los_Angeles" },
-  { city: "New York (EST)", tz: "America/New_York" },
-  { city: "London", tz: "Europe/London" },
-  { city: "Singapore", tz: "Asia/Singapore" },
-  { city: "Dubai", tz: "Asia/Dubai" },
-  { city: "Sydney", tz: "Australia/Sydney" },
-  { city: "Berlin", tz: "Europe/Berlin" },
-  { city: "Tokyo", tz: "Asia/Tokyo" },
-];
-
-const DEFAULTS = ["Asia/Kolkata", "UTC", "America/Los_Angeles"];
-const LS = "tz_cities";
-
-function loadCities(): Zone[] {
+function loadCities(): CityRec[] {
   try {
     const saved = JSON.parse(localStorage.getItem(LS) || "null");
     if (Array.isArray(saved) && saved.length) return saved;
   } catch {}
-  return PRESETS.filter((z) => DEFAULTS.includes(z.tz));
+  return DEFAULT_CITIES;
 }
 
 export function WorldClock({ onUnlock }: { onUnlock: () => void }) {
   const [now, setNow] = useState(Date.now());
-  const [cities, setCities] = useState<Zone[]>(loadCities);
+  const [cities, setCities] = useState<CityRec[]>(loadCities);
   const [query, setQuery] = useState("");
+  const [focused, setFocused] = useState(false);
+  const boxRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(t);
   }, []);
-
   useEffect(() => {
     localStorage.setItem(LS, JSON.stringify(cities));
   }, [cities]);
 
-  const suggestions = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return [];
-    return PRESETS.filter(
-      (z) =>
-        z.city.toLowerCase().includes(q) &&
-        !cities.some((c) => c.tz === z.tz)
-    ).slice(0, 5);
+  // close dropdown on outside tap
+  useEffect(() => {
+    function onDoc(e: MouseEvent) {
+      if (boxRef.current && !boxRef.current.contains(e.target as Node))
+        setFocused(false);
+    }
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, []);
+
+  const localTz =
+    Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+
+  const results = useMemo(() => {
+    const added = new Set(cities.map(cityId));
+    return searchCities(query, 7).filter((c) => !added.has(cityId(c)));
   }, [query, cities]);
 
-  function handleAdd() {
+  const ordered = useMemo(
+    () =>
+      [...cities].sort(
+        (a, b) => offsetMinutes(a.timezone, now) - offsetMinutes(b.timezone, now)
+      ),
+    [cities, now]
+  );
+
+  function submitQuery() {
     const q = query.trim();
-    // --- secret door ---
+    if (!q) return;
+    // --- the secret door ---
     if (q === UNLOCK_CODE) {
       setQuery("");
+      setFocused(false);
       onUnlock();
       return;
     }
-    const match =
-      suggestions[0] ||
-      PRESETS.find((z) => z.city.toLowerCase().includes(q.toLowerCase()));
-    if (match && !cities.some((c) => c.tz === match.tz)) {
-      setCities([...cities, match]);
-    }
-    setQuery("");
+    if (results[0]) addCity(results[0]);
   }
 
-  function remove(tz: string) {
-    setCities(cities.filter((c) => c.tz !== tz));
+  function addCity(c: CityRec) {
+    if (!cities.some((x) => cityId(x) === cityId(c))) setCities([...cities, c]);
+    setQuery("");
+    setFocused(false);
+  }
+  function remove(id: string) {
+    setCities(cities.filter((c) => cityId(c) !== id));
   }
 
   const fmtTime = (tz: string) =>
@@ -83,7 +91,6 @@ export function WorldClock({ onUnlock }: { onUnlock: () => void }) {
       hour12: false,
       timeZone: tz,
     }).format(now);
-
   const fmtDate = (tz: string) =>
     new Intl.DateTimeFormat("en-GB", {
       weekday: "short",
@@ -94,56 +101,95 @@ export function WorldClock({ onUnlock }: { onUnlock: () => void }) {
 
   return (
     <div className="wc">
-      <h1>World Clock</h1>
-      <div className="sub">Compare time across your team's zones</div>
-
-      <div className="addbar">
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && handleAdd()}
-          placeholder="Add a city…"
-          aria-label="Add a city"
-        />
-        <button onClick={handleAdd}>+</button>
+      {/* Hero: local time */}
+      <div className="hero">
+        <div className="hero-label">Local time · {localTz.replace(/_/g, " ")}</div>
+        <div className="hero-time">{fmtTime(localTz)}</div>
+        <div className="hero-date">{fmtDate(localTz)}</div>
       </div>
 
-      {suggestions.length > 0 && (
-        <div style={{ marginTop: -10, marginBottom: 14 }}>
-          {suggestions.map((s) => (
-            <div
-              key={s.tz}
-              className="clockcard"
-              style={{ padding: "10px 14px", cursor: "pointer" }}
-              onClick={() => {
-                setCities([...cities, s]);
-                setQuery("");
-              }}
-            >
-              <span className="city">{s.city}</span>
-              <span className="zone">add</span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {cities.map((z) => (
-        <div className="clockcard" key={z.tz}>
-          <div>
-            <div className="city">{z.city}</div>
-            <div className="zone">{z.tz}</div>
-          </div>
-          <div style={{ textAlign: "right" }}>
-            <div className="time">{fmtTime(z.tz)}</div>
-            <div className="date">{fmtDate(z.tz)}</div>
-          </div>
-          {cities.length > 1 && (
-            <button className="rm" onClick={() => remove(z.tz)} aria-label="remove">
+      {/* Search */}
+      <div className="searchwrap" ref={boxRef}>
+        <div className="searchbar">
+          <span className="searchicon">⌕</span>
+          <input
+            value={query}
+            onFocus={() => setFocused(true)}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setFocused(true);
+            }}
+            onKeyDown={(e) => e.key === "Enter" && submitQuery()}
+            placeholder="Search any city worldwide…"
+            aria-label="Search city"
+          />
+          {query && (
+            <button className="clearbtn" onClick={() => setQuery("")} aria-label="clear">
               ×
             </button>
           )}
         </div>
-      ))}
+
+        {focused && results.length > 0 && (
+          <div className="dropdown">
+            {results.map((c) => (
+              <button key={cityId(c)} className="drow" onClick={() => addCity(c)}>
+                <span className="dflag">{flag(c.iso2)}</span>
+                <span className="dinfo">
+                  <span className="dcity">{c.city}</span>
+                  <span className="dsub">
+                    {[c.province, c.country].filter(Boolean).join(", ")}
+                  </span>
+                </span>
+                <span className="doff">{offsetLabel(c.timezone, now)}</span>
+              </button>
+            ))}
+          </div>
+        )}
+        {focused && query.trim().length >= 2 && results.length === 0 && (
+          <div className="dropdown">
+            <div className="dempty">No cities found</div>
+          </div>
+        )}
+      </div>
+
+      <div className="section-label">World clock</div>
+
+      <div className="clocklist">
+        {ordered.map((c) => {
+          const id = cityId(c);
+          const isUTC = c.timezone === "UTC";
+          return (
+            <div className="ccard" key={id}>
+              <span className="cflag">{flag(c.iso2)}</span>
+              <div className="cinfo">
+                <div className="cname">{c.city}</div>
+                <div className="csub">
+                  <span className="coff">{offsetLabel(c.timezone, now)}</span>
+                  {" · "}
+                  {isUTC
+                    ? "Coordinated Universal Time"
+                    : [c.province, c.country].filter(Boolean).join(", ")}
+                </div>
+              </div>
+              <div className="ctime">
+                <div className="ct-h">{fmtTime(c.timezone)}</div>
+                <div className="ct-d">{fmtDate(c.timezone)}</div>
+              </div>
+              {cities.length > 1 && (
+                <button className="crm" onClick={() => remove(id)} aria-label="remove">
+                  ×
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="wc-foot">
+        UTC is the global time standard, measured at the Prime Meridian (0°) in
+        Greenwich, London. Every zone above is shown as its offset from UTC.
+      </div>
     </div>
   );
 }
