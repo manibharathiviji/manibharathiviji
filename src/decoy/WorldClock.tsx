@@ -48,10 +48,8 @@ export function WorldClock({ onUnlock }: { onUnlock: () => void }) {
   const localTz =
     Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 
-  const results = useMemo(() => {
-    const added = new Set(cities.map(cityId));
-    return searchCities(query, 7).filter((c) => !added.has(cityId(c)));
-  }, [query, cities]);
+  const addedIds = useMemo(() => new Set(cities.map(cityId)), [cities]);
+  const results = useMemo(() => searchCities(query, 7), [query]);
 
   const ordered = useMemo(
     () =>
@@ -132,18 +130,29 @@ export function WorldClock({ onUnlock }: { onUnlock: () => void }) {
 
         {focused && results.length > 0 && (
           <div className="dropdown">
-            {results.map((c) => (
-              <button key={cityId(c)} className="drow" onClick={() => addCity(c)}>
-                <span className="dflag">{flag(c.iso2)}</span>
-                <span className="dinfo">
-                  <span className="dcity">{c.city}</span>
-                  <span className="dsub">
-                    {[c.province, c.country].filter(Boolean).join(", ")}
+            {results.map((c) => {
+              const added = addedIds.has(cityId(c));
+              return (
+                <button
+                  key={cityId(c)}
+                  className="drow"
+                  onClick={() => !added && addCity(c)}
+                >
+                  <span className="dflag">{flag(c.iso2)}</span>
+                  <span className="dinfo">
+                    <span className="dcity">{c.city}</span>
+                    <span className="dsub">
+                      {[c.province, c.country].filter(Boolean).join(", ")}
+                    </span>
                   </span>
-                </span>
-                <span className="doff">{offsetLabel(c.timezone, now)}</span>
-              </button>
-            ))}
+                  {added ? (
+                    <span className="dadded">✓ Added</span>
+                  ) : (
+                    <span className="doff">{offsetLabel(c.timezone, now)}</span>
+                  )}
+                </button>
+              );
+            })}
           </div>
         )}
         {focused && query.trim().length >= 2 && results.length === 0 && (
