@@ -130,6 +130,8 @@ input { font: inherit; }
 @keyframes pres { 0% { box-shadow: 0 0 0 0 #22c55e77; } 70% { box-shadow: 0 0 0 6px #22c55e00; } 100% { box-shadow: 0 0 0 0 #22c55e00; } }
 /* presence dot used standalone (info card) */
 .info-dot-row .presence { position: static; border: none; }
+/* standalone header dot (no avatar) */
+.top > .presence.lg { position: static; width: 16px; height: 16px; border: none; flex: none; font-size: 10px; }
 
 /* overflow menu */
 .menu-backdrop { position: fixed; inset: 0; z-index: 29; }
@@ -150,6 +152,9 @@ input { font: inherit; }
 .info-dot-row .presence { width: 12px; height: 12px; }
 .info-sep { height: 1px; background: #ffffff12; margin: 8px 0 12px; }
 .info-line { font-size: 14px; color: var(--muted); margin-bottom: 8px; }
+.info-line.small { font-size: 12px; line-height: 1.5; }
+.mini-btn { margin-left: 10px; background: var(--accent2); color: #001018; border: none;
+  padding: 4px 12px; border-radius: 8px; font-weight: 700; font-size: 13px; }
 
 /* tiny starred tag near time */
 .star-tag { display: inline-flex; align-items: center; gap: 2px; color: #fbbf24; margin-right: 6px; font-size: 10px; }

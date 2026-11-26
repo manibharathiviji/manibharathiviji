@@ -85,7 +85,7 @@ export function Chat({ me, onLock, onExit }: { me: Member; onLock: () => void; o
     const beat = () =>
       supabase.from("cx_members").update({ last_seen: new Date().toISOString() }).eq("id", me.id);
     beat();
-    const hb = setInterval(beat, 60000);
+    const hb = setInterval(beat, 25000);
 
     const fetchSeen = async () => {
       const { data } = await supabase.from("cx_members").select("last_seen").eq("id", otherId).maybeSingle();
@@ -93,18 +93,22 @@ export function Chat({ me, onLock, onExit }: { me: Member; onLock: () => void; o
       setPeerLastSeen(ls ? new Date(ls).getTime() : null);
     };
     fetchSeen();
-    const poll = setInterval(fetchSeen, 45000);
+    const poll = setInterval(fetchSeen, 12000);
 
     const pres = supabase.channel("cx_presence", { config: { presence: { key: me.id } } });
-    pres.on("presence", { event: "sync" }, () => {
+    const syncPres = () => {
       const state: any = pres.presenceState();
       setPeerPresent(Array.isArray(state[otherId]) && state[otherId].length > 0);
-    });
+    };
+    pres
+      .on("presence", { event: "sync" }, syncPres)
+      .on("presence", { event: "join" }, syncPres)
+      .on("presence", { event: "leave" }, syncPres);
     pres.subscribe((st) => {
       if (st === "SUBSCRIBED") pres.track({ at: Date.now() });
     });
 
-    const tick = setInterval(() => setNowTick(Date.now()), 20000);
+    const tick = setInterval(() => setNowTick(Date.now()), 8000);
     return () => {
       clearInterval(hb);
       clearInterval(poll);
@@ -448,44 +452,43 @@ export function Chat({ me, onLock, onExit }: { me: Member; onLock: () => void; o
   }
 
   const peerLiveActive = peerLive && Date.now() - peerLive.at < 3 * 60000;
-  const peerStatus: "online" | "away" | "offline" = peerPresent
-    ? "online"
-    : peerLastSeen && nowTick - peerLastSeen < 10 * 60000
-    ? "away"
-    : "offline";
+  // green = presence active OR a very recent heartbeat (accurate online signal)
+  const peerStatus: "online" | "away" | "offline" =
+    peerPresent || (peerLastSeen && nowTick - peerLastSeen < 40000)
+      ? "online"
+      : peerLastSeen && nowTick - peerLastSeen < 10 * 60000
+      ? "away"
+      : "offline";
   const statusLabel = peerStatus === "online" ? "Online" : peerStatus === "away" ? "Away" : "Offline";
 
   return (
     <div className="screen chat">
       <div className="top">
-        <div className="avatar">
-          {(them?.display_name ?? "?").charAt(0).toUpperCase()}
-          <span className={`presence ${peerStatus}`}>{peerStatus === "offline" ? "×" : ""}</span>
-        </div>
+        <span className={`presence lg ${peerStatus}`}>{peerStatus === "offline" ? "×" : ""}</span>
         <div className="top-info">
           <div className="status-word">{statusLabel}</div>
         </div>
-        <button className="ic-top" title="Voice call" onClick={() => startCall("voice")}><IconPhone size={17} /></button>
-        <button className="ic-top" title="Video call" onClick={() => startCall("video")}><IconVideo size={18} /></button>
-        <button className="sos-btn" onClick={triggerSOS} disabled={sosActive} title="Emergency">
-          <IconSos size={15} /> SOS
-        </button>
         <div className="overflow-wrap">
           <button className="ic-top" title="More" onClick={() => setOverflowOpen((v) => !v)}><IconMore size={20} /></button>
           {overflowOpen && <div className="menu-backdrop" onClick={() => setOverflowOpen(false)} />}
           {overflowOpen && (
             <div className="overflow-menu" onClick={() => setOverflowOpen(false)}>
+              <button onClick={() => startCall("voice")}><IconPhone size={16} /> Voice call</button>
+              <button onClick={() => startCall("video")}><IconVideo size={16} /> Video call</button>
               {isOwner && (
                 <button onClick={() => setStarredView((v) => !v)}>
                   <IconStar size={16} fill={starredView} /> {starredView ? "All messages" : "Starred"}
                 </button>
               )}
               <button onClick={() => setInfoOpen(true)}><IconInfo size={16} /> Info</button>
-              <button onClick={onLock}><IconHome size={16} /> Home</button>
-              <button className="danger" onClick={onExit}><IconExit size={16} /> Exit</button>
             </div>
           )}
         </div>
+        <button className="sos-btn" onClick={triggerSOS} disabled={sosActive} title="Emergency">
+          <IconSos size={15} /> SOS
+        </button>
+        <button className="ic-top" title="Home" onClick={onLock}><IconHome size={19} /></button>
+        <button className="ic-top exit" title="Exit" onClick={onExit}><IconExit size={19} /></button>
       </div>
 
       {infoOpen && (
@@ -505,6 +508,21 @@ export function Chat({ me, onLock, onExit }: { me: Member; onLock: () => void; o
             <div className="info-line">
               {isOwner ? "🗄 You keep the full archive." : "⏳ Your messages clear after 24 hours."}
             </div>
+            <div className="info-sep" />
+            <div className="info-line">
+              🔔 Alerts: <b>{pushOn ? "On" : "Off"}</b>
+              {!pushOn && pushSupported() && (
+                <button className="mini-btn" onClick={enableAlerts} disabled={pushBusy}>
+                  {pushBusy ? "…" : "Enable"}
+                </button>
+              )}
+            </div>
+            {!pushOn && !pushSupported() && (
+              <div className="info-line small">
+                On iPhone: open in <b>Safari</b> → Share → <b>Add to Home Screen</b>, then open
+                that app and tap Enable here.
+              </div>
+            )}
             <button className="btn" onClick={() => setInfoOpen(false)} style={{ marginTop: 14 }}>Close</button>
           </div>
         </div>
