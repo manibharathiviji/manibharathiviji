@@ -28,6 +28,7 @@ export interface Message {
   reply_to: string | null;
   delivered_at: string | null;
   read_at: string | null;
+  starred: boolean;
   created_at: string;
   // client-only decrypted fields
   _plain?: string;

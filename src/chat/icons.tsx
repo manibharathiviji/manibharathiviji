@@ -60,3 +60,8 @@ export const IconHome = ({ size }: P) => (
 export const IconExit = ({ size }: P) => (
   <svg {...base(size)}><path d="M12 3v9" /><path d="M6.4 6.4a9 9 0 1 0 11.2 0" /></svg>
 );
+export const IconStar = ({ size, fill }: P & { fill?: boolean }) => (
+  <svg {...base(size)} fill={fill ? "currentColor" : "none"}>
+    <path d="M12 2.6l2.9 5.9 6.5.95-4.7 4.58 1.1 6.47L12 17.98 6.2 21.08l1.1-6.47-4.7-4.58 6.5-.95z" />
+  </svg>
+);

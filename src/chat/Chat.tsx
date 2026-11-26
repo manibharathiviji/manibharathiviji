@@ -4,7 +4,7 @@ import { decrypt, encrypt } from "../crypto";
 import { uploadEncrypted, downloadDecrypted, blobToBytes } from "./media";
 import { WavRecorder } from "./wav";
 import { enablePush, isPushEnabled, pushSupported, fireSosPush } from "../push";
-import { IconPlus, IconSend, IconMic, IconStop, IconImage, IconDoc, IconPin, IconLive, IconSos, IconHome, IconExit } from "./icons";
+import { IconPlus, IconSend, IconMic, IconStop, IconImage, IconDoc, IconPin, IconLive, IconSos, IconHome, IconExit, IconStar } from "./icons";
 import "emoji-picker-element";
 import type { Member, Message, MediaMeta } from "../types";
 
@@ -50,6 +50,7 @@ export function Chat({ me, onLock, onExit }: { me: Member; onLock: () => void; o
   const [reactions, setReactions] = useState<Record<string, { member_id: string; emoji: string }[]>>({});
   const [reactTarget, setReactTarget] = useState<string | null>(null);
   const [reactExpanded, setReactExpanded] = useState(false);
+  const [starredView, setStarredView] = useState(false);
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const REACTIONS = ["❤️", "😂", "👍", "😮", "😢", "🙏"];
@@ -105,6 +106,10 @@ export function Chat({ me, onLock, onExit }: { me: Member; onLock: () => void; o
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "cx_messages" }, (p) => {
         const m = decryptMessage(p.new as Message);
         setMessages((prev) => (prev.some((x) => x.id === m.id) ? prev : [...prev, m]));
+      })
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "cx_messages" }, (p) => {
+        const u = p.new as Message;
+        setMessages((prev) => prev.map((x) => (x.id === u.id ? { ...x, starred: u.starred } : x)));
       })
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "cx_sos_events" }, (p) => {
         const e = p.new as { member_id: string; lat?: number; lng?: number; created_at: string };
@@ -169,6 +174,14 @@ export function Chat({ me, onLock, onExit }: { me: Member; onLock: () => void; o
   pickRef.current = (emoji: string) => {
     if (reactTarget) applyReaction(reactTarget, emoji);
   };
+
+  async function toggleStar(messageId: string, current: boolean) {
+    setReactTarget(null);
+    setReactExpanded(false);
+    // optimistic
+    setMessages((prev) => prev.map((x) => (x.id === messageId ? { ...x, starred: !current } : x)));
+    await supabase.from("cx_messages").update({ starred: !current }).eq("id", messageId);
+  }
 
   function startPress(id: string) {
     if (pressTimer.current) clearTimeout(pressTimer.current);
@@ -353,6 +366,15 @@ export function Chat({ me, onLock, onExit }: { me: Member; onLock: () => void; o
             <span className="dot" /> {isOwner ? "full archive" : "clears after 24h"} · encrypted
           </div>
         </div>
+        {isOwner && (
+          <button
+            className={`ic-top ${starredView ? "active" : ""}`}
+            title="Starred messages"
+            onClick={() => setStarredView((v) => !v)}
+          >
+            <IconStar size={19} fill={starredView} />
+          </button>
+        )}
         <button className="sos-btn" onClick={triggerSOS} disabled={sosActive} title="Emergency">
           <IconSos size={15} /> SOS
         </button>
@@ -402,34 +424,47 @@ export function Chat({ me, onLock, onExit }: { me: Member; onLock: () => void; o
       )}
 
       <div className="log" ref={logRef}>
-        {messages.length === 0 && <div className="hint">No messages yet. Say hello 👋</div>}
-        {messages.map((m) => {
-          const mine = m.sender_id === me.id;
-          const t = new Date(m.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-          const rx = reactions[m.id];
-          return (
-            <div
-              key={m.id}
-              className={`bubble ${mine ? "me" : "you"}`}
-              onPointerDown={() => startPress(m.id)}
-              onPointerUp={cancelPress}
-              onPointerMove={cancelPress}
-              onPointerLeave={cancelPress}
-              onPointerCancel={cancelPress}
-              onContextMenu={(e) => e.preventDefault()}
-            >
-              {m.content_type === "text" ? m._plain : <MediaBubble msg={m} isOwner={isOwner} onView={setViewer} />}
-              {rx && rx.length > 0 && (
-                <div className="react-chips">
-                  {rx.map((r, i) => (
-                    <span key={i}>{r.emoji}</span>
-                  ))}
+        {(() => {
+          const shown = starredView ? messages.filter((m) => m.starred) : messages;
+          if (shown.length === 0)
+            return (
+              <div className="hint">
+                {starredView ? "No starred messages yet." : "No messages yet. Say hello 👋"}
+              </div>
+            );
+          return shown.map((m) => {
+            const mine = m.sender_id === me.id;
+            const t = new Date(m.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+            const rx = reactions[m.id];
+            return (
+              <div
+                key={m.id}
+                className={`bubble ${mine ? "me" : "you"} ${m.starred ? "starred" : ""}`}
+                onPointerDown={() => startPress(m.id)}
+                onPointerUp={cancelPress}
+                onPointerMove={cancelPress}
+                onPointerLeave={cancelPress}
+                onPointerCancel={cancelPress}
+                onContextMenu={(e) => e.preventDefault()}
+              >
+                {!isOwner && m.starred && (
+                  <div className="starred-note"><IconStar size={12} fill /> Admin starred this</div>
+                )}
+                {m.content_type === "text" ? m._plain : <MediaBubble msg={m} isOwner={isOwner} onView={setViewer} />}
+                {rx && rx.length > 0 && (
+                  <div className="react-chips">
+                    {rx.map((r, i) => (
+                      <span key={i}>{r.emoji}</span>
+                    ))}
+                  </div>
+                )}
+                <div className="meta">
+                  {isOwner && m.starred && <IconStar size={11} fill />} {t}
                 </div>
-              )}
-              <div className="meta">{t}</div>
-            </div>
-          );
-        })}
+              </div>
+            );
+          });
+        })()}
       </div>
 
       {busy && <div className="hint">{busy}</div>}
@@ -480,6 +515,15 @@ export function Chat({ me, onLock, onExit }: { me: Member; onLock: () => void; o
                 <button key={em} onClick={() => applyReaction(reactTarget, em)}>{em}</button>
               ))}
               <button className="more" onClick={() => setReactExpanded(true)} title="More">＋</button>
+              {isOwner && (
+                <button
+                  className="star-act"
+                  onClick={() => toggleStar(reactTarget, !!messages.find((m) => m.id === reactTarget)?.starred)}
+                  title="Star"
+                >
+                  <IconStar size={22} fill={!!messages.find((m) => m.id === reactTarget)?.starred} />
+                </button>
+              )}
             </div>
           ) : (
             <div className="emoji-sheet" onClick={(e) => e.stopPropagation()}>
