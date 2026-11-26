@@ -48,9 +48,14 @@ export function Chat({ me, onLock, onExit }: { me: Member; onLock: () => void; o
   const [pushBusy, setPushBusy] = useState(false);
   const [reactions, setReactions] = useState<Record<string, { member_id: string; emoji: string }[]>>({});
   const [reactTarget, setReactTarget] = useState<string | null>(null);
+  const [reactExpanded, setReactExpanded] = useState(false);
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const REACTIONS = ["❤️", "😂", "👍", "😮", "😢", "🙏"];
+  const ALL_EMOJIS = ("😀 😃 😄 😁 😆 😅 😂 🤣 😊 😇 🙂 🙃 😉 😌 😍 🥰 😘 😗 😙 😚 😋 😛 " +
+    "😝 😜 🤪 🤨 🧐 🤓 😎 🥳 😏 😒 😞 😔 😟 😕 🙁 😣 😖 😫 😩 🥺 😢 😭 😤 😠 😡 🤬 🤯 😳 🥵 🥶 " +
+    "😱 😨 😰 😥 😓 🤗 🤔 🤭 🥱 😴 👍 👎 👏 🙌 🙏 💪 👌 ✌️ 🤞 🤟 🤙 👋 🤝 🫶 👑 " +
+    "❤️ 🧡 💛 💚 💙 💜 🖤 🤍 🤎 💔 💕 💞 💓 💗 💖 💘 💝 💯 ✨ ⭐ 🌟 💫 🔥 🎉 🎊 🥳 🌹 🌸 💐 🍀 😻 😹").split(" ").filter(Boolean);
 
   const logRef = useRef<HTMLDivElement>(null);
   const galleryRef = useRef<HTMLInputElement>(null);
@@ -149,6 +154,7 @@ export function Chat({ me, onLock, onExit }: { me: Member; onLock: () => void; o
 
   async function applyReaction(messageId: string, emoji: string) {
     setReactTarget(null);
+    setReactExpanded(false);
     const mine = reactions[messageId]?.find((r) => r.member_id === me.id);
     if (mine && mine.emoji === emoji) {
       await supabase.from("cx_reactions").delete().eq("message_id", messageId).eq("member_id", me.id);
@@ -458,12 +464,29 @@ export function Chat({ me, onLock, onExit }: { me: Member; onLock: () => void; o
       </div>
 
       {reactTarget && (
-        <div className="react-backdrop" onClick={() => setReactTarget(null)}>
-          <div className="react-bar" onClick={(e) => e.stopPropagation()}>
-            {REACTIONS.map((em) => (
-              <button key={em} onClick={() => applyReaction(reactTarget, em)}>{em}</button>
-            ))}
-          </div>
+        <div
+          className="react-backdrop"
+          onClick={() => {
+            setReactTarget(null);
+            setReactExpanded(false);
+          }}
+        >
+          {!reactExpanded ? (
+            <div className="react-bar" onClick={(e) => e.stopPropagation()}>
+              {REACTIONS.map((em) => (
+                <button key={em} onClick={() => applyReaction(reactTarget, em)}>{em}</button>
+              ))}
+              <button className="more" onClick={() => setReactExpanded(true)} title="More">＋</button>
+            </div>
+          ) : (
+            <div className="emoji-sheet" onClick={(e) => e.stopPropagation()}>
+              <div className="emoji-grid">
+                {ALL_EMOJIS.map((em, i) => (
+                  <button key={i} onClick={() => applyReaction(reactTarget, em)}>{em}</button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

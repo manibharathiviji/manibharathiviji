@@ -53,20 +53,24 @@ export function App() {
     setPhase("decoy");
   }
 
-  function exitApp() {
+  async function exitApp() {
     forgetKey();
     setPhase("decoy");
+    // full wipe: end the login session too (strongest lock we can do)
     try {
-      window.close();
+      await supabase.auth.signOut();
     } catch {}
-    // if the tab can't close itself, hard-reset to the decoy (no chat left open)
+    try {
+      window.close(); // closes the window on Android; iOS ignores (Apple restriction)
+    } catch {}
+    // if the tab can't close itself, hard-reset to the decoy, fully logged out
     setTimeout(() => {
       try {
         window.location.replace(window.location.pathname + window.location.search);
       } catch {
         window.location.reload();
       }
-    }, 120);
+    }, 150);
   }
 
   // Security: when the app is backgrounded/minimized, drop straight back to the

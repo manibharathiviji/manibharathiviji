@@ -144,6 +144,14 @@ input { font: inherit; }
 .react-bar button { background: none; border: none; font-size: 30px; line-height: 1; padding: 4px;
   transition: transform .1s; }
 .react-bar button:active { transform: scale(1.35); }
+.react-bar .more { font-size: 22px; color: var(--text); width: 38px; height: 38px; border-radius: 50%;
+  background: var(--panel2); display: flex; align-items: center; justify-content: center; }
+.emoji-sheet { position: fixed; left: 0; right: 0; bottom: 0; background: var(--panel);
+  border-radius: 18px 18px 0 0; padding: 14px 10px calc(16px + env(safe-area-inset-bottom));
+  max-height: 55vh; box-shadow: 0 -10px 30px rgba(0,0,0,.5); }
+.emoji-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; overflow-y: auto; max-height: 48vh; }
+.emoji-grid button { background: none; border: none; font-size: 28px; padding: 6px 0; line-height: 1; }
+.emoji-grid button:active { background: #ffffff14; border-radius: 8px; }
 .bubble.me { align-self: flex-end; background: linear-gradient(135deg, #0ea5e9, #0369a1);
   color: #fff; border-bottom-right-radius: 5px; }
 .bubble.you { align-self: flex-start; background: #233045; border-bottom-left-radius: 5px; }
