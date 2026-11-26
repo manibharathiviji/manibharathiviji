@@ -46,6 +46,11 @@ export function Chat({ me, onLock, onExit }: { me: Member; onLock: () => void; o
   const [peerLive, setPeerLive] = useState<PeerLive | null>(null);
   const [pushOn, setPushOn] = useState(true); // assume on until checked
   const [pushBusy, setPushBusy] = useState(false);
+  const [reactions, setReactions] = useState<Record<string, { member_id: string; emoji: string }[]>>({});
+  const [reactTarget, setReactTarget] = useState<string | null>(null);
+  const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const REACTIONS = ["❤️", "😂", "👍", "😮", "😢", "🙏"];
 
   const logRef = useRef<HTMLDivElement>(null);
   const galleryRef = useRef<HTMLInputElement>(null);
@@ -83,6 +88,7 @@ export function Chat({ me, onLock, onExit }: { me: Member; onLock: () => void; o
         .from("cx_messages").select("*").order("created_at", { ascending: true }).limit(500);
       if (!active) return;
       setMessages(((data as Message[] | null) ?? []).map(decryptMessage));
+      loadReactions();
       // latest live location from the other person (last 10 min)
       const { data: loc } = await supabase
         .from("cx_locations").select("member_id,lat,lng,created_at")
@@ -107,6 +113,7 @@ export function Chat({ me, onLock, onExit }: { me: Member; onLock: () => void; o
         if (l.member_id !== me.id && l.kind === "live")
           setPeerLive({ lat: l.lat, lng: l.lng, at: Date.now() });
       })
+      .on("postgres_changes", { event: "*", schema: "public", table: "cx_reactions" }, () => loadReactions())
       .subscribe();
     return () => {
       active = false;
@@ -129,6 +136,38 @@ export function Chat({ me, onLock, onExit }: { me: Member; onLock: () => void; o
   async function insert(row: Record<string, unknown>) {
     const { error } = await supabase.from("cx_messages").insert(row);
     if (error) throw error;
+  }
+
+  async function loadReactions() {
+    const { data } = await supabase.from("cx_reactions").select("message_id,member_id,emoji");
+    const map: Record<string, { member_id: string; emoji: string }[]> = {};
+    (data ?? []).forEach((r: any) => {
+      (map[r.message_id] ??= []).push({ member_id: r.member_id, emoji: r.emoji });
+    });
+    setReactions(map);
+  }
+
+  async function applyReaction(messageId: string, emoji: string) {
+    setReactTarget(null);
+    const mine = reactions[messageId]?.find((r) => r.member_id === me.id);
+    if (mine && mine.emoji === emoji) {
+      await supabase.from("cx_reactions").delete().eq("message_id", messageId).eq("member_id", me.id);
+    } else {
+      await supabase.from("cx_reactions").upsert(
+        { message_id: messageId, member_id: me.id, emoji },
+        { onConflict: "message_id,member_id" }
+      );
+    }
+    loadReactions();
+  }
+
+  function startPress(id: string) {
+    if (pressTimer.current) clearTimeout(pressTimer.current);
+    pressTimer.current = setTimeout(() => setReactTarget(id), 420);
+  }
+  function cancelPress() {
+    if (pressTimer.current) clearTimeout(pressTimer.current);
+    pressTimer.current = null;
   }
 
   async function sendText() {
@@ -358,9 +397,26 @@ export function Chat({ me, onLock, onExit }: { me: Member; onLock: () => void; o
         {messages.map((m) => {
           const mine = m.sender_id === me.id;
           const t = new Date(m.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+          const rx = reactions[m.id];
           return (
-            <div key={m.id} className={`bubble ${mine ? "me" : "you"}`}>
+            <div
+              key={m.id}
+              className={`bubble ${mine ? "me" : "you"}`}
+              onPointerDown={() => startPress(m.id)}
+              onPointerUp={cancelPress}
+              onPointerMove={cancelPress}
+              onPointerLeave={cancelPress}
+              onPointerCancel={cancelPress}
+              onContextMenu={(e) => e.preventDefault()}
+            >
               {m.content_type === "text" ? m._plain : <MediaBubble msg={m} isOwner={isOwner} onView={setViewer} />}
+              {rx && rx.length > 0 && (
+                <div className="react-chips">
+                  {rx.map((r, i) => (
+                    <span key={i}>{r.emoji}</span>
+                  ))}
+                </div>
+              )}
               <div className="meta">{t}</div>
             </div>
           );
@@ -400,6 +456,16 @@ export function Chat({ me, onLock, onExit }: { me: Member; onLock: () => void; o
           </button>
         )}
       </div>
+
+      {reactTarget && (
+        <div className="react-backdrop" onClick={() => setReactTarget(null)}>
+          <div className="react-bar" onClick={(e) => e.stopPropagation()}>
+            {REACTIONS.map((em) => (
+              <button key={em} onClick={() => applyReaction(reactTarget, em)}>{em}</button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {viewer && (
         <div className="viewer" onClick={() => setViewer(null)}>

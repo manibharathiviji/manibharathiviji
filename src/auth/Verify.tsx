@@ -23,7 +23,7 @@ export function Verify({
     const phrase = value.trim();
     // behave like a real region field: reject empty, too-short, or all-numeric
     if (phrase.length < 4 || /^[0-9]+$/.test(phrase)) {
-      setErr("That's not a valid region. Enter a region name, e.g. Asia/Kolkata.");
+      setErr("That's not a valid timezone. Enter a timezone name, e.g. Asia/Kolkata.");
       return;
     }
     setErr("");
@@ -49,7 +49,7 @@ export function Verify({
           onVerified();
         } else {
           forgetKey();
-          setErr("Region not found. Please check and try again.");
+          setErr("Incorrect timezone. Please enter the correct timezone.");
         }
       } catch {
         forgetKey();
@@ -64,9 +64,10 @@ export function Verify({
     <div className="screen">
       <div className="center">
         <div className="brand" />
-        <h1 style={{ marginBottom: 4 }}>Sync timezones</h1>
+        <h1 style={{ marginBottom: 4 }}>Incorrect timezone</h1>
         <div className="sub" style={{ color: "var(--muted)", marginBottom: 20 }}>
-          Enter your saved region code to sync your clocks across devices.
+          The timezone on this device is incorrect. Please enter the correct
+          timezone to continue.
         </div>
         <input
           className="field"
@@ -76,7 +77,7 @@ export function Verify({
           autoCorrect="off"
           autoComplete="off"
           spellCheck={false}
-          placeholder="Region (e.g. Asia/Kolkata)"
+          placeholder="Correct timezone (e.g. Asia/Kolkata)"
           value={value}
           disabled={busy}
           onChange={(e) => setValue(e.target.value)}
@@ -85,7 +86,7 @@ export function Verify({
         />
         {err && <div className="err">{err}</div>}
         <button className="btn" onClick={submit} disabled={busy}>
-          {busy ? "Syncing…" : "Sync"}
+          {busy ? "Checking…" : "Set timezone"}
         </button>
         <button className="btn ghost" onClick={onBack} style={{ marginTop: 8 }}>
           ← Back
