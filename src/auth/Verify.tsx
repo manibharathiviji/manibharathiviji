@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { supabase } from "../supabase";
-import { deriveKey, forgetKey, encrypt, decrypt } from "../crypto";
+import { deriveKey, forgetKey, decrypt } from "../crypto";
 
 // Layer 3, disguised as a "region sync" step. The agreed phrase derives the
-// shared key; we confirm it against a shared encrypted verifier so a wrong
-// phrase is rejected with an innocent-looking error.
-const VERIFIER_PLAINTEXT = "MAGBEA-OK";
+// shared key. We confirm it by trying to decrypt existing messages — so the
+// check is tied to real data and can never lock you out with a stale verifier.
+// (If there are no messages yet, the first phrase is accepted and becomes the
+// de-facto key; the other device must then match it to read anything.)
 
 export function Verify({
   onVerified,
@@ -30,30 +31,24 @@ export function Verify({
       try {
         deriveKey(phrase);
         const { data } = await supabase
-          .from("cx_vault")
-          .select("verifier")
-          .eq("id", "shared")
-          .maybeSingle();
+          .from("cx_messages")
+          .select("ciphertext")
+          .not("ciphertext", "is", null)
+          .order("created_at", { ascending: false })
+          .limit(10);
 
-        if (data?.verifier) {
-          // existing verifier — the phrase must decrypt it
-          if (decrypt(data.verifier) === VERIFIER_PLAINTEXT) {
-            onVerified();
-          } else {
-            forgetKey();
-            setErr("That's not a valid region code. Please check and try again.");
-          }
+        const rows = (data as { ciphertext: string }[] | null) ?? [];
+        if (rows.length === 0) {
+          // nothing to check against yet — accept as first use
+          onVerified();
+          return;
+        }
+        const anyDecrypts = rows.some((r) => decrypt(r.ciphertext) !== null);
+        if (anyDecrypts) {
+          onVerified();
         } else {
-          // first setup — define the verifier with this phrase
-          const { error } = await supabase
-            .from("cx_vault")
-            .upsert({ id: "shared", verifier: encrypt(VERIFIER_PLAINTEXT) });
-          if (error) {
-            forgetKey();
-            setErr("Couldn't sync right now. Try again.");
-          } else {
-            onVerified();
-          }
+          forgetKey();
+          setErr("That's not a valid region code. Please check and try again.");
         }
       } catch {
         forgetKey();
@@ -75,6 +70,10 @@ export function Verify({
           className="field"
           type="password"
           inputMode="text"
+          autoCapitalize="none"
+          autoCorrect="off"
+          autoComplete="off"
+          spellCheck={false}
           placeholder="Region code"
           value={value}
           disabled={busy}
