@@ -53,6 +53,39 @@ export function App() {
     setPhase("decoy");
   }
 
+  function exitApp() {
+    forgetKey();
+    setPhase("decoy");
+    try {
+      window.close();
+    } catch {}
+    // if the tab can't close itself, hard-reset to the decoy (no chat left open)
+    setTimeout(() => {
+      try {
+        window.location.replace(window.location.pathname + window.location.search);
+      } catch {
+        window.location.reload();
+      }
+    }, 120);
+  }
+
+  // Security: when the app is backgrounded/minimized, drop straight back to the
+  // decoy and forget the key — so re-opening always starts from the world clock.
+  useEffect(() => {
+    function onHide() {
+      if (document.visibilityState === "hidden") {
+        forgetKey();
+        setPhase("decoy");
+      }
+    }
+    document.addEventListener("visibilitychange", onHide);
+    window.addEventListener("pagehide", onHide);
+    return () => {
+      document.removeEventListener("visibilitychange", onHide);
+      window.removeEventListener("pagehide", onHide);
+    };
+  }, []);
+
   if (!ready) return null;
 
   if (phase === "decoy") {
@@ -90,5 +123,5 @@ export function App() {
     );
   }
 
-  return <Chat me={member} onLock={lock} />;
+  return <Chat me={member} onLock={lock} onExit={exitApp} />;
 }

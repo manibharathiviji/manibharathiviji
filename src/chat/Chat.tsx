@@ -4,6 +4,7 @@ import { decrypt, encrypt } from "../crypto";
 import { uploadEncrypted, downloadDecrypted, blobToBytes } from "./media";
 import { WavRecorder } from "./wav";
 import { enablePush, isPushEnabled, pushSupported, fireSosPush } from "../push";
+import { IconPlus, IconSend, IconMic, IconStop, IconImage, IconDoc, IconPin, IconLive, IconSos, IconHome, IconExit } from "./icons";
 import type { Member, Message, MediaMeta } from "../types";
 
 function kindOf(mime: string): MediaMeta["kind"] {
@@ -31,7 +32,7 @@ interface PeerLive {
   at: number;
 }
 
-export function Chat({ me, onLock }: { me: Member; onLock: () => void }) {
+export function Chat({ me, onLock, onExit }: { me: Member; onLock: () => void; onExit: () => void }) {
   const [them, setThem] = useState<Member | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState("");
@@ -304,8 +305,11 @@ export function Chat({ me, onLock }: { me: Member; onLock: () => void }) {
             <span className="dot" /> {isOwner ? "full archive" : "clears after 24h"} · encrypted
           </div>
         </div>
-        <button className="sos-btn" onClick={triggerSOS} disabled={sosActive} title="Emergency">SOS</button>
-        <button className="lock" title="Hide" onClick={onLock}>⌂</button>
+        <button className="sos-btn" onClick={triggerSOS} disabled={sosActive} title="Emergency">
+          <IconSos size={15} /> SOS
+        </button>
+        <button className="ic-top" title="Home" onClick={onLock}><IconHome size={20} /></button>
+        <button className="ic-top exit" title="Exit" onClick={onExit}><IconExit size={20} /></button>
       </div>
 
       {isOwner && !pushOn && (
@@ -369,15 +373,15 @@ export function Chat({ me, onLock }: { me: Member; onLock: () => void }) {
         <input ref={galleryRef} type="file" accept="image/*,video/*" style={{ display: "none" }} onChange={onPickFile} />
         <input ref={docRef} type="file" style={{ display: "none" }} onChange={onPickFile} />
         <div className="attach-wrap">
-          <button className="icon-btn" title="Attach" onClick={() => setMenuOpen((v) => !v)}>＋</button>
+          <button className="icon-btn" title="Attach" onClick={() => setMenuOpen((v) => !v)}><IconPlus size={22} /></button>
           {menuOpen && (
             <div className="attach-menu">
-              <button onClick={() => galleryRef.current?.click()}>🖼 Photo / Video</button>
-              <button onClick={() => docRef.current?.click()}>📄 Document</button>
-              <button onClick={shareCurrent}>📍 Current location</button>
-              <button onClick={() => startLive(8)}>🟢 Live · 8 hours</button>
-              <button onClick={() => startLive(24)}>🟢 Live · 24 hours</button>
-              <button onClick={customLive}>🟢 Live · custom…</button>
+              <button onClick={() => galleryRef.current?.click()}><span className="mi-ic img"><IconImage size={17} /></span> Photo / Video</button>
+              <button onClick={() => docRef.current?.click()}><span className="mi-ic doc"><IconDoc size={17} /></span> Document</button>
+              <button onClick={shareCurrent}><span className="mi-ic pin"><IconPin size={17} /></span> Current location</button>
+              <button onClick={() => startLive(8)}><span className="mi-ic live"><IconLive size={17} /></span> Live · 8 hours</button>
+              <button onClick={() => startLive(24)}><span className="mi-ic live"><IconLive size={17} /></span> Live · 24 hours</button>
+              <button onClick={customLive}><span className="mi-ic live"><IconLive size={17} /></span> Live · custom…</button>
             </div>
           )}
         </div>
@@ -389,10 +393,10 @@ export function Chat({ me, onLock }: { me: Member; onLock: () => void }) {
           disabled={recording}
         />
         {draft.trim() ? (
-          <button className="send" onClick={sendText}>➤</button>
+          <button className="send" onClick={sendText} title="Send"><IconSend size={18} /></button>
         ) : (
           <button className={`send ${recording ? "rec" : ""}`} onClick={toggleRecord} title="Voice message">
-            {recording ? "⏹" : "🎤"}
+            {recording ? <IconStop size={18} /> : <IconMic size={20} />}
           </button>
         )}
       </div>
