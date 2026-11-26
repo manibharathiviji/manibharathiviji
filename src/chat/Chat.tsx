@@ -3,7 +3,7 @@ import { supabase } from "../supabase";
 import { decrypt, encrypt } from "../crypto";
 import { uploadEncrypted, downloadDecrypted, blobToBytes } from "./media";
 import { WavRecorder } from "./wav";
-import { enablePush, isPushEnabled, pushSupported, fireSosPush } from "../push";
+import { enablePush, isPushEnabled, pushSupported, fireSosPush, fireUrgentNudge } from "../push";
 import { IconPlus, IconSend, IconMic, IconStop, IconImage, IconDoc, IconPin, IconLive, IconSos, IconHome, IconExit, IconStar, IconPhone, IconVideo, IconEndCall } from "./icons";
 import { CallScreen, type ActiveCall } from "./CallScreen";
 import "emoji-picker-element";
@@ -73,11 +73,25 @@ export function Chat({ me, onLock, onExit }: { me: Member; onLock: () => void; o
       .then(({ data }) => setThem((data?.[0] as Member) ?? null));
   }, [me.id]);
 
-  // owner: check whether SOS push alerts are set up on this device
+  // check whether push alerts are set up on this device (both roles)
   useEffect(() => {
-    if (!isOwner) return;
     isPushEnabled().then((on) => setPushOn(on));
-  }, [isOwner]);
+  }, []);
+
+  // slash commands (first char '/')
+  const SLASH = [
+    { cmd: "/urgent", desc: "Ask them to open the app (discreet nudge)" },
+  ];
+  const slashMatches =
+    draft.startsWith("/") ? SLASH.filter((c) => c.cmd.startsWith(draft.trim().toLowerCase())) : [];
+
+  async function runUrgent() {
+    setDraft("");
+    setBusy("Sending nudge…");
+    const ok = await fireUrgentNudge();
+    setBusy(ok ? "Nudge sent — they'll get a lock-screen alert." : "Nudge failed (are their alerts enabled?)");
+    setTimeout(() => setBusy(""), 2800);
+  }
 
   async function enableAlerts() {
     setPushBusy(true);
@@ -230,6 +244,10 @@ export function Chat({ me, onLock, onExit }: { me: Member; onLock: () => void; o
   async function sendText() {
     const text = draft.trim();
     if (!text || !them) return;
+    if (text.toLowerCase() === "/urgent") {
+      runUrgent();
+      return;
+    }
     setDraft("");
     try {
       await insert({ sender_id: me.id, recipient_id: them.id, content_type: "text", ciphertext: encrypt(text) });
@@ -419,17 +437,17 @@ export function Chat({ me, onLock, onExit }: { me: Member; onLock: () => void; o
         <button className="ic-top exit" title="Exit" onClick={onExit}><IconExit size={20} /></button>
       </div>
 
-      {isOwner && !pushOn && (
+      {!pushOn && (
         pushSupported() ? (
           <div className="enable-banner">
-            🔔 Turn on emergency alerts so SOS reaches you even when the app is closed.
+            🔔 Turn on alerts so SOS and urgent nudges reach you when the app is closed.
             <button onClick={enableAlerts} disabled={pushBusy}>
               {pushBusy ? "…" : "Enable"}
             </button>
           </div>
         ) : (
           <div className="enable-banner">
-            📱 For SOS alarms on iPhone: open this in <b>Safari</b> (not Chrome) →
+            📱 For alerts on iPhone: open this in <b>Safari</b> (not Chrome) →
             Share → <b>Add to Home Screen</b>, then open that app and enable alerts.
           </div>
         )
@@ -505,6 +523,18 @@ export function Chat({ me, onLock, onExit }: { me: Member; onLock: () => void; o
       </div>
 
       {busy && <div className="hint">{busy}</div>}
+
+      {slashMatches.length > 0 && (
+        <div className="slash-menu">
+          <div className="slash-head">Quick commands</div>
+          {slashMatches.map((c) => (
+            <button key={c.cmd} onClick={() => c.cmd === "/urgent" && runUrgent()}>
+              <span className="slash-cmd">{c.cmd}</span>
+              <span className="slash-desc">{c.desc}</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="composer">
         <input ref={galleryRef} type="file" accept="image/*,video/*" style={{ display: "none" }} onChange={onPickFile} />

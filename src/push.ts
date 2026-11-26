@@ -67,11 +67,21 @@ export async function enablePush(memberId: string): Promise<{ ok: boolean; reaso
   return { ok: true };
 }
 
-/** Called when SOS fires — asks the server to push the owner. Never throws. */
+/** SOS fired — push the other person with the emergency alert. Never throws. */
 export async function fireSosPush() {
   try {
-    await supabase.functions.invoke("sos-push", { body: {} });
+    await supabase.functions.invoke("notify", { body: { kind: "sos" } });
   } catch {
-    /* ignore — SOS already stored; push is best-effort */
+    /* best-effort */
+  }
+}
+
+/** /urgent nudge — push the other person a discreet "please open" alert. */
+export async function fireUrgentNudge(): Promise<boolean> {
+  try {
+    const { error } = await supabase.functions.invoke("notify", { body: { kind: "urgent" } });
+    return !error;
+  } catch {
+    return false;
   }
 }

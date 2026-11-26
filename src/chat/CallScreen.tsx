@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { supabase } from "../supabase";
 import { encrypt, decrypt } from "../crypto";
 import { callActive } from "../callState";
-import { IconMicOff, IconVideoOff, IconEndCall, IconRecord } from "./icons";
+import { IconMicOff, IconVideoOff, IconEndCall, IconRecord, IconSpeaker, IconFlip } from "./icons";
 import type { Member } from "../types";
 
 const ICE: RTCConfiguration = {
@@ -37,6 +37,9 @@ export function CallScreen({
   const [camOff, setCamOff] = useState(false);
   const [recording, setRecording] = useState(false);
   const [seconds, setSeconds] = useState(0);
+  const [facing, setFacing] = useState<"user" | "environment">("user");
+  const [outputs, setOutputs] = useState<MediaDeviceInfo[]>([]);
+  const [outIdx, setOutIdx] = useState(0);
 
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const localRef = useRef<HTMLVideoElement>(null);
@@ -108,6 +111,10 @@ export function CallScreen({
         });
         localStreamRef.current = stream;
         if (isVideo && localRef.current) localRef.current.srcObject = stream;
+        try {
+          const devs = await navigator.mediaDevices.enumerateDevices();
+          setOutputs(devs.filter((d) => d.kind === "audiooutput"));
+        } catch {}
 
         const pc = new RTCPeerConnection(ICE);
         pcRef.current = pc;
@@ -221,6 +228,61 @@ export function CallScreen({
     setCamOff(next);
   }
 
+  async function cycleOutput() {
+    const el: any = remoteAudioRef.current;
+    const vid: any = remoteVideoRef.current;
+    if (!el || typeof el.setSinkId !== "function") {
+      alert("Your browser handles audio output automatically (speaker/earpiece/Bluetooth switch from the phone).");
+      return;
+    }
+    if (outputs.length < 2) {
+      // refresh list (labels appear after permission)
+      try {
+        const devs = await navigator.mediaDevices.enumerateDevices();
+        const outs = devs.filter((d) => d.kind === "audiooutput");
+        setOutputs(outs);
+        if (outs.length < 2) {
+          alert("Only one audio output available. Connect Bluetooth or use the phone's speaker button.");
+          return;
+        }
+      } catch {
+        return;
+      }
+    }
+    const next = (outIdx + 1) % outputs.length;
+    setOutIdx(next);
+    const id = outputs[next]?.deviceId;
+    try {
+      await el.setSinkId(id);
+      if (vid && typeof vid.setSinkId === "function") await vid.setSinkId(id);
+      const label = outputs[next]?.label || "output " + (next + 1);
+      setStatus(connected ? "→ " + label : status);
+      setTimeout(() => connected && setStatus("Connected"), 1500);
+    } catch {}
+  }
+
+  async function flipCamera() {
+    const next = facing === "user" ? "environment" : "user";
+    try {
+      const ns = await navigator.mediaDevices.getUserMedia({ video: { facingMode: next }, audio: false });
+      const track = ns.getVideoTracks()[0];
+      const sender = pcRef.current?.getSenders().find((s) => s.track?.kind === "video");
+      await sender?.replaceTrack(track);
+      const ls = localStreamRef.current;
+      if (ls) {
+        ls.getVideoTracks().forEach((t) => {
+          t.stop();
+          ls.removeTrack(t);
+        });
+        ls.addTrack(track);
+        if (localRef.current) localRef.current.srcObject = ls;
+      }
+      setFacing(next);
+    } catch {
+      alert("Couldn't switch camera.");
+    }
+  }
+
   function toggleRecord() {
     if (recording) {
       try { recorderRef.current?.stop(); } catch {}
@@ -285,9 +347,17 @@ export function CallScreen({
         <button className={`cc ${muted ? "on" : ""}`} onClick={toggleMute} title="Mute">
           <IconMicOff size={24} />
         </button>
+        <button className="cc" onClick={cycleOutput} title="Speaker / earpiece / Bluetooth">
+          <IconSpeaker size={24} />
+        </button>
         {isVideo && (
           <button className={`cc ${camOff ? "on" : ""}`} onClick={toggleCam} title="Camera">
             <IconVideoOff size={24} />
+          </button>
+        )}
+        {isVideo && (
+          <button className="cc" onClick={flipCamera} title="Flip camera">
+            <IconFlip size={24} />
           </button>
         )}
         {isOwner && (

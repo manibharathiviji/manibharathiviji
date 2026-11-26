@@ -91,3 +91,15 @@ export const IconEndCall = ({ size }: P) => (
 export const IconRecord = ({ size, fill }: P & { fill?: boolean }) => (
   <svg {...base(size)}><circle cx="12" cy="12" r="6" fill={fill ? "#ef4444" : "currentColor"} stroke="none" /></svg>
 );
+export const IconSpeaker = ({ size }: P) => (
+  <svg {...base(size)}>
+    <path d="M4 9v6h3l5 4V5L7 9H4z" fill="currentColor" stroke="none" />
+    <path d="M15.5 8.5a5 5 0 0 1 0 7M18 6a8 8 0 0 1 0 12" />
+  </svg>
+);
+export const IconFlip = ({ size }: P) => (
+  <svg {...base(size)}>
+    <rect x="3" y="7" width="18" height="12" rx="2" />
+    <path d="M9 11l-2 2 2 2M15 11l2 2-2 2M7 13h10" />
+  </svg>
+);
