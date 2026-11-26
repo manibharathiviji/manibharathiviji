@@ -28,6 +28,7 @@ jobs:
           VITE_SUPABASE_URL: https://zwpcronmiotlokpdcrhs.supabase.co
           VITE_SUPABASE_KEY: sb_publishable_XekL5fEOblxYziMMz0-yGg_-LsBnWsX
           VITE_UNLOCK_CODE: "0409"
+          VITE_VAPID_PUBLIC: BBiIlspCgusFztlkM0QWj1d9g4IXH1yN6nfDfPHfZLWxjX9JM9Kh6dm2NyMK52WuxhCmWgNwLKR_RWvFEHzOkN4
       - uses: actions/configure-pages@v5
         with:
           enablement: true

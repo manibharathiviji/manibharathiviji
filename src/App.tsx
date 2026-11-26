@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "./supabase";
 import { initCrypto, forgetKey } from "./crypto";
+import { registerSW } from "./push";
 import { WorldClock } from "./decoy/WorldClock";
 import { Login } from "./auth/Login";
 import { Verify } from "./auth/Verify";
@@ -16,6 +17,7 @@ export function App() {
   const [sessionUserId, setSessionUserId] = useState<string | null>(null);
 
   useEffect(() => {
+    registerSW();
     (async () => {
       await initCrypto();
       const { data } = await supabase.auth.getSession();

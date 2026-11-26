@@ -3,6 +3,7 @@ import { supabase } from "../supabase";
 import { decrypt, encrypt } from "../crypto";
 import { uploadEncrypted, downloadDecrypted, blobToBytes } from "./media";
 import { WavRecorder } from "./wav";
+import { enablePush, isPushEnabled, pushSupported, fireSosPush } from "../push";
 import type { Member, Message, MediaMeta } from "../types";
 
 function kindOf(mime: string): MediaMeta["kind"] {
@@ -42,6 +43,8 @@ export function Chat({ me, onLock }: { me: Member; onLock: () => void }) {
   const [sosActive, setSosActive] = useState(false);
   const [myLiveUntil, setMyLiveUntil] = useState<number | null>(null);
   const [peerLive, setPeerLive] = useState<PeerLive | null>(null);
+  const [pushOn, setPushOn] = useState(true); // assume on until checked
+  const [pushBusy, setPushBusy] = useState(false);
 
   const logRef = useRef<HTMLDivElement>(null);
   const galleryRef = useRef<HTMLInputElement>(null);
@@ -57,6 +60,20 @@ export function Chat({ me, onLock }: { me: Member; onLock: () => void }) {
     supabase.from("cx_members").select("*").neq("id", me.id).limit(1)
       .then(({ data }) => setThem((data?.[0] as Member) ?? null));
   }, [me.id]);
+
+  // owner: check whether SOS push alerts are set up on this device
+  useEffect(() => {
+    if (!isOwner) return;
+    isPushEnabled().then((on) => setPushOn(on));
+  }, [isOwner]);
+
+  async function enableAlerts() {
+    setPushBusy(true);
+    const res = await enablePush(me.id);
+    setPushBusy(false);
+    if (res.ok) setPushOn(true);
+    else alert(res.reason || "Couldn't enable alerts.");
+  }
 
   useEffect(() => {
     let active = true;
@@ -221,8 +238,9 @@ export function Chat({ me, onLock }: { me: Member; onLock: () => void }) {
       lat = pos.coords.latitude; lng = pos.coords.longitude; acc = pos.coords.accuracy;
     } catch {}
     try {
-      // 1) alert admin immediately
+      // 1) alert admin immediately (DB row + push notification)
       await supabase.from("cx_sos_events").insert({ member_id: me.id, trigger: "manual", lat, lng, status: "active" });
+      fireSosPush();
       const meta: MediaMeta = { mime: "application/geo", kind: "location", lat, lng, accuracy: acc, sos: true };
       await insert({ sender_id: me.id, recipient_id: them.id, content_type: "location", ciphertext: encrypt(JSON.stringify(meta)) });
       // 2) start live location for 1 hour
@@ -286,6 +304,15 @@ export function Chat({ me, onLock }: { me: Member; onLock: () => void }) {
         <button className="sos-btn" onClick={triggerSOS} disabled={sosActive} title="Emergency">SOS</button>
         <button className="lock" title="Hide" onClick={onLock}>⌂</button>
       </div>
+
+      {isOwner && !pushOn && pushSupported() && (
+        <div className="enable-banner">
+          🔔 Turn on emergency alerts so SOS reaches you even when the app is closed.
+          <button onClick={enableAlerts} disabled={pushBusy}>
+            {pushBusy ? "…" : "Enable"}
+          </button>
+        </div>
+      )}
 
       {sosAlert && (
         <div className="sos-banner">
