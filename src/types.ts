@@ -31,6 +31,15 @@ export interface Message {
   created_at: string;
   // client-only decrypted fields
   _plain?: string;
+  _meta?: MediaMeta | null;
+}
+
+export interface MediaMeta {
+  name?: string;
+  mime: string;
+  size?: number;
+  kind: "image" | "video" | "document" | "voice";
+  dur?: number; // seconds, for voice/video
 }
 
 export interface Reaction {

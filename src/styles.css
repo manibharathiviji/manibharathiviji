@@ -121,3 +121,24 @@ input { font: inherit; }
 .composer button { width: 46px; border-radius: 50%; border: none; background: var(--accent2);
   color: #001018; font-size: 18px; font-weight: 700; }
 .hint { color: var(--muted); font-size: 12px; text-align: center; padding: 10px; }
+
+/* composer buttons */
+.composer .icon-btn { width: 42px; border-radius: 50%; border: none; background: var(--panel2);
+  color: var(--text); font-size: 22px; line-height: 1; flex: none; }
+.composer .send { width: 46px; border-radius: 50%; border: none; background: var(--accent2);
+  color: #001018; font-size: 18px; font-weight: 700; flex: none; }
+.composer .send.rec { background: var(--danger); color: #fff; animation: pulse 1s infinite; }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .55; } }
+
+/* media bubbles */
+.media { display: flex; flex-direction: column; gap: 6px; }
+.media-img { max-width: 230px; max-height: 300px; border-radius: 10px; display: block; }
+.media-vid { max-width: 250px; max-height: 320px; border-radius: 10px; display: block; background: #000; }
+.media-aud { width: 230px; height: 40px; }
+.media-load { color: #cbd5e1aa; font-size: 13px; }
+.media .dl { align-self: flex-start; font-size: 11px; color: #e0f2fe; text-decoration: none;
+  background: #ffffff1a; padding: 3px 8px; border-radius: 8px; }
+.media.file { flex-direction: row; align-items: center; gap: 8px; }
+.media.file .file-ic { font-size: 22px; }
+.media.file .file-nm { font-size: 13px; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.media.file .dl { font-size: 16px; }
