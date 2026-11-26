@@ -65,3 +65,29 @@ export const IconStar = ({ size, fill }: P & { fill?: boolean }) => (
     <path d="M12 2.6l2.9 5.9 6.5.95-4.7 4.58 1.1 6.47L12 17.98 6.2 21.08l1.1-6.47-4.7-4.58 6.5-.95z" />
   </svg>
 );
+export const IconPhone = ({ size }: P) => (
+  <svg {...base(size)} fill="currentColor" stroke="none">
+    <path d="M6.6 10.8a15.5 15.5 0 0 0 6.6 6.6l2.2-2.2c.3-.3.7-.4 1-.2 1.1.4 2.3.6 3.6.6.6 0 1 .4 1 1V20c0 .6-.4 1-1 1A17 17 0 0 1 3 4c0-.6.4-1 1-1h3.4c.6 0 1 .4 1 1 0 1.3.2 2.5.6 3.6.1.3 0 .7-.2 1z" />
+  </svg>
+);
+export const IconVideo = ({ size }: P) => (
+  <svg {...base(size)}><rect x="2.5" y="6" width="13" height="12" rx="2" /><path d="M15.5 10l6-3.5v11L15.5 14" /></svg>
+);
+export const IconMicOff = ({ size }: P) => (
+  <svg {...base(size)}>
+    <line x1="3" y1="3" x2="21" y2="21" />
+    <path d="M9 9v2a3 3 0 0 0 4.5 2.6M15 9.3V5a3 3 0 0 0-5.7-1.3" />
+    <path d="M5 11a7 7 0 0 0 10.3 6.1M19 11v0" /><line x1="12" y1="18" x2="12" y2="21" />
+  </svg>
+);
+export const IconVideoOff = ({ size }: P) => (
+  <svg {...base(size)}><line x1="3" y1="3" x2="21" y2="21" /><path d="M15.5 10l6-3.5v11M10 6h3.5a2 2 0 0 1 2 2v3M2.5 8v8a2 2 0 0 0 2 2H13" /></svg>
+);
+export const IconEndCall = ({ size }: P) => (
+  <svg {...base(size)} fill="currentColor" stroke="none">
+    <path d="M21 9.3c-.3-.3-.7-.4-1-.3-1 .3-2 .4-3.1.4V8c0-.5-.3-.9-.8-1a16.9 16.9 0 0 0-8.2 0c-.5.1-.8.5-.8 1v1.4c-1.1 0-2.1-.1-3.1-.4-.3-.1-.7 0-1 .3l-1.9 2a1 1 0 0 0 0 1.4 17 17 0 0 0 1.5 1.4 1 1 0 0 0 1.3 0l1.9-1.6c.3-.2.4-.5.4-.9v-1.5c2-.5 4.2-.5 6.2 0v1.5c0 .4.1.7.4.9l1.9 1.6a1 1 0 0 0 1.3 0 17 17 0 0 0 1.5-1.4 1 1 0 0 0 0-1.4z" />
+  </svg>
+);
+export const IconRecord = ({ size, fill }: P & { fill?: boolean }) => (
+  <svg {...base(size)}><circle cx="12" cy="12" r="6" fill={fill ? "#ef4444" : "currentColor"} stroke="none" /></svg>
+);

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "./supabase";
 import { initCrypto, forgetKey } from "./crypto";
 import { registerSW } from "./push";
+import { callActive } from "./callState";
 import { WorldClock } from "./decoy/WorldClock";
 import { Login } from "./auth/Login";
 import { Verify } from "./auth/Verify";
@@ -77,7 +78,7 @@ export function App() {
   // decoy and forget the key — so re-opening always starts from the world clock.
   useEffect(() => {
     function onHide() {
-      if (document.visibilityState === "hidden") {
+      if (document.visibilityState === "hidden" && !callActive.get()) {
         forgetKey();
         setPhase("decoy");
       }

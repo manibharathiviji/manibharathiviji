@@ -4,7 +4,8 @@ import { decrypt, encrypt } from "../crypto";
 import { uploadEncrypted, downloadDecrypted, blobToBytes } from "./media";
 import { WavRecorder } from "./wav";
 import { enablePush, isPushEnabled, pushSupported, fireSosPush } from "../push";
-import { IconPlus, IconSend, IconMic, IconStop, IconImage, IconDoc, IconPin, IconLive, IconSos, IconHome, IconExit, IconStar } from "./icons";
+import { IconPlus, IconSend, IconMic, IconStop, IconImage, IconDoc, IconPin, IconLive, IconSos, IconHome, IconExit, IconStar, IconPhone, IconVideo, IconEndCall } from "./icons";
+import { CallScreen, type ActiveCall } from "./CallScreen";
 import "emoji-picker-element";
 import type { Member, Message, MediaMeta } from "../types";
 
@@ -51,6 +52,8 @@ export function Chat({ me, onLock, onExit }: { me: Member; onLock: () => void; o
   const [reactTarget, setReactTarget] = useState<string | null>(null);
   const [reactExpanded, setReactExpanded] = useState(false);
   const [starredView, setStarredView] = useState(false);
+  const [activeCall, setActiveCall] = useState<ActiveCall | null>(null);
+  const [incoming, setIncoming] = useState<{ id: string; kind: "voice" | "video"; callerId: string } | null>(null);
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const REACTIONS = ["❤️", "😂", "👍", "😮", "😢", "🙏"];
@@ -121,6 +124,12 @@ export function Chat({ me, onLock, onExit }: { me: Member; onLock: () => void; o
           setPeerLive({ lat: l.lat, lng: l.lng, at: Date.now() });
       })
       .on("postgres_changes", { event: "*", schema: "public", table: "cx_reactions" }, () => loadReactions())
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "cx_calls" }, (p) => {
+        const c = p.new as { id: string; caller_id: string; callee_id: string; kind: "voice" | "video"; status: string };
+        if (c.callee_id === me.id && c.status === "ringing") {
+          setIncoming({ id: c.id, kind: c.kind, callerId: c.caller_id });
+        }
+      })
       .subscribe();
     return () => {
       active = false;
@@ -174,6 +183,32 @@ export function Chat({ me, onLock, onExit }: { me: Member; onLock: () => void; o
   pickRef.current = (emoji: string) => {
     if (reactTarget) applyReaction(reactTarget, emoji);
   };
+
+  async function startCall(kind: "voice" | "video") {
+    if (!them || activeCall) return;
+    const { data, error } = await supabase
+      .from("cx_calls")
+      .insert({ caller_id: me.id, callee_id: them.id, kind, status: "ringing" })
+      .select("id")
+      .single();
+    if (error || !data) {
+      alert("Couldn't start call: " + (error?.message || "unknown"));
+      return;
+    }
+    setActiveCall({ id: (data as any).id, kind, isCaller: true });
+  }
+
+  function acceptCall() {
+    if (!incoming) return;
+    setActiveCall({ id: incoming.id, kind: incoming.kind, isCaller: false });
+    setIncoming(null);
+  }
+  async function declineCall() {
+    if (!incoming) return;
+    const id = incoming.id;
+    setIncoming(null);
+    await supabase.from("cx_calls").update({ status: "declined" }).eq("id", id);
+  }
 
   async function toggleStar(messageId: string, current: boolean) {
     setReactTarget(null);
@@ -366,6 +401,8 @@ export function Chat({ me, onLock, onExit }: { me: Member; onLock: () => void; o
             <span className="dot" /> {isOwner ? "full archive" : "clears after 24h"} · encrypted
           </div>
         </div>
+        <button className="ic-top" title="Voice call" onClick={() => startCall("voice")}><IconPhone size={17} /></button>
+        <button className="ic-top" title="Video call" onClick={() => startCall("video")}><IconVideo size={18} /></button>
         {isOwner && (
           <button
             className={`ic-top ${starredView ? "active" : ""}`}
@@ -538,6 +575,22 @@ export function Chat({ me, onLock, onExit }: { me: Member; onLock: () => void; o
           <img src={viewer} alt="" />
           <button className="viewer-close">✕</button>
         </div>
+      )}
+
+      {incoming && !activeCall && (
+        <div className="incoming">
+          <div className="call-avatar big">{(them?.display_name ?? "?").charAt(0).toUpperCase()}</div>
+          <div className="call-name">{them?.display_name ?? "Incoming"}</div>
+          <div className="call-status">Incoming {incoming.kind} call…</div>
+          <div className="incoming-actions">
+            <button className="cc end" onClick={declineCall} title="Decline"><IconEndCall size={26} /></button>
+            <button className="cc accept" onClick={acceptCall} title="Accept"><IconPhone size={24} /></button>
+          </div>
+        </div>
+      )}
+
+      {activeCall && (
+        <CallScreen me={me} them={them} call={activeCall} onEnd={() => setActiveCall(null)} />
       )}
     </div>
   );
