@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type MutableRefObject } from "react";
 import { supabase } from "../supabase";
 import { decrypt, encrypt } from "../crypto";
 import { uploadEncrypted, downloadDecrypted, blobToBytes } from "./media";
 import { WavRecorder } from "./wav";
 import { enablePush, isPushEnabled, pushSupported, fireSosPush } from "../push";
 import { IconPlus, IconSend, IconMic, IconStop, IconImage, IconDoc, IconPin, IconLive, IconSos, IconHome, IconExit } from "./icons";
+import "emoji-picker-element";
 import type { Member, Message, MediaMeta } from "../types";
 
 function kindOf(mime: string): MediaMeta["kind"] {
@@ -52,10 +53,6 @@ export function Chat({ me, onLock, onExit }: { me: Member; onLock: () => void; o
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const REACTIONS = ["❤️", "😂", "👍", "😮", "😢", "🙏"];
-  const ALL_EMOJIS = ("😀 😃 😄 😁 😆 😅 😂 🤣 😊 😇 🙂 🙃 😉 😌 😍 🥰 😘 😗 😙 😚 😋 😛 " +
-    "😝 😜 🤪 🤨 🧐 🤓 😎 🥳 😏 😒 😞 😔 😟 😕 🙁 😣 😖 😫 😩 🥺 😢 😭 😤 😠 😡 🤬 🤯 😳 🥵 🥶 " +
-    "😱 😨 😰 😥 😓 🤗 🤔 🤭 🥱 😴 👍 👎 👏 🙌 🙏 💪 👌 ✌️ 🤞 🤟 🤙 👋 🤝 🫶 👑 " +
-    "❤️ 🧡 💛 💚 💙 💜 🖤 🤍 🤎 💔 💕 💞 💓 💗 💖 💘 💝 💯 ✨ ⭐ 🌟 💫 🔥 🎉 🎊 🥳 🌹 🌸 💐 🍀 😻 😹").split(" ").filter(Boolean);
 
   const logRef = useRef<HTMLDivElement>(null);
   const galleryRef = useRef<HTMLInputElement>(null);
@@ -166,6 +163,12 @@ export function Chat({ me, onLock, onExit }: { me: Member; onLock: () => void; o
     }
     loadReactions();
   }
+
+  // stable handler the native emoji picker calls with the chosen emoji
+  const pickRef = useRef<(emoji: string) => void>(() => {});
+  pickRef.current = (emoji: string) => {
+    if (reactTarget) applyReaction(reactTarget, emoji);
+  };
 
   function startPress(id: string) {
     if (pressTimer.current) clearTimeout(pressTimer.current);
@@ -480,11 +483,7 @@ export function Chat({ me, onLock, onExit }: { me: Member; onLock: () => void; o
             </div>
           ) : (
             <div className="emoji-sheet" onClick={(e) => e.stopPropagation()}>
-              <div className="emoji-grid">
-                {ALL_EMOJIS.map((em, i) => (
-                  <button key={i} onClick={() => applyReaction(reactTarget, em)}>{em}</button>
-                ))}
-              </div>
+              <EmojiPickerEl onPickRef={pickRef} />
             </div>
           )}
         </div>
@@ -498,6 +497,25 @@ export function Chat({ me, onLock, onExit }: { me: Member; onLock: () => void; o
       )}
     </div>
   );
+}
+
+// Full searchable emoji keyboard (web component), created imperatively to avoid
+// custom-element JSX typing. Calls the latest handler via a ref.
+function EmojiPickerEl({ onPickRef }: { onPickRef: MutableRefObject<(e: string) => void> }) {
+  const host = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = document.createElement("emoji-picker") as HTMLElement;
+    el.className = "dark";
+    const h = (ev: Event) => onPickRef.current((ev as CustomEvent).detail.unicode);
+    el.addEventListener("emoji-click", h);
+    host.current?.appendChild(el);
+    return () => {
+      el.removeEventListener("emoji-click", h);
+      el.remove();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return <div ref={host} className="epick-host" />;
 }
 
 function MediaBubble({ msg, isOwner, onView }: { msg: Message; isOwner: boolean; onView: (url: string) => void }) {
