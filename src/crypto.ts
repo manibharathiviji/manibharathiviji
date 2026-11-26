@@ -3,7 +3,7 @@
 // on once (entered on each device). The server only ever stores ciphertext — it
 // never sees the passphrase or the key. Either party can decrypt the full history,
 // which is exactly what the owner's permanent archive needs.
-import _sodium from "libsodium-wrappers";
+import _sodium from "libsodium-wrappers-sumo";
 
 let sodium: typeof _sodium;
 let KEY: Uint8Array | null = null;
