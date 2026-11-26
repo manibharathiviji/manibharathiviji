@@ -153,6 +153,14 @@ input { font: inherit; }
 .sos-banner a { color: #fecaca; font-weight: 700; }
 .sos-banner button { margin-left: auto; background: none; border: none; color: #fff; font-size: 16px; }
 
+/* live location banner */
+.live-banner { display: flex; align-items: center; gap: 10px; background: #064e3b; color: #d1fae5;
+  padding: 9px 14px; font-size: 13px; font-weight: 600; }
+.live-banner.me { background: #134e4a; }
+.live-banner a { color: #6ee7b7; font-weight: 700; margin-left: auto; }
+.live-banner button { margin-left: auto; background: #ffffff1a; border: none; color: #fff;
+  padding: 4px 10px; border-radius: 8px; font-size: 12px; font-weight: 600; }
+
 /* attach menu */
 .attach-wrap { position: relative; flex: none; }
 .attach-menu { position: absolute; bottom: 52px; left: 0; background: var(--panel2);

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { supabase } from "../supabase";
 import { decrypt, encrypt } from "../crypto";
 import { uploadEncrypted, downloadDecrypted, blobToBytes } from "./media";
+import { WavRecorder } from "./wav";
 import type { Member, Message, MediaMeta } from "../types";
 
 function kindOf(mime: string): MediaMeta["kind"] {
@@ -12,9 +13,7 @@ function kindOf(mime: string): MediaMeta["kind"] {
 }
 
 function decryptMessage(m: Message): Message {
-  if (m.content_type === "text") {
-    return { ...m, _plain: decrypt(m.ciphertext || "") ?? "🔒" };
-  }
+  if (m.content_type === "text") return { ...m, _plain: decrypt(m.ciphertext || "") ?? "🔒" };
   let meta: MediaMeta | null = null;
   try {
     const raw = m.ciphertext ? decrypt(m.ciphertext) : null;
@@ -23,6 +22,12 @@ function decryptMessage(m: Message): Message {
     meta = null;
   }
   return { ...m, _meta: meta };
+}
+
+interface PeerLive {
+  lat: number;
+  lng: number;
+  at: number;
 }
 
 export function Chat({ me, onLock }: { me: Member; onLock: () => void }) {
@@ -35,21 +40,21 @@ export function Chat({ me, onLock }: { me: Member; onLock: () => void }) {
   const [viewer, setViewer] = useState<string | null>(null);
   const [sosAlert, setSosAlert] = useState<{ lat?: number; lng?: number; at: string } | null>(null);
   const [sosActive, setSosActive] = useState(false);
+  const [myLiveUntil, setMyLiveUntil] = useState<number | null>(null);
+  const [peerLive, setPeerLive] = useState<PeerLive | null>(null);
 
   const logRef = useRef<HTMLDivElement>(null);
   const galleryRef = useRef<HTMLInputElement>(null);
   const docRef = useRef<HTMLInputElement>(null);
-  const recRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
+  const voiceRecRef = useRef<WavRecorder | null>(null);
+  const watchRef = useRef<number | null>(null);
+  const lastLiveInsert = useRef(0);
+  const liveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isOwner = me.role === "owner";
 
   useEffect(() => {
-    supabase
-      .from("cx_members")
-      .select("*")
-      .neq("id", me.id)
-      .limit(1)
+    supabase.from("cx_members").select("*").neq("id", me.id).limit(1)
       .then(({ data }) => setThem((data?.[0] as Member) ?? null));
   }, [me.id]);
 
@@ -57,35 +62,33 @@ export function Chat({ me, onLock }: { me: Member; onLock: () => void }) {
     let active = true;
     (async () => {
       const { data } = await supabase
-        .from("cx_messages")
-        .select("*")
-        .order("created_at", { ascending: true })
-        .limit(500);
+        .from("cx_messages").select("*").order("created_at", { ascending: true }).limit(500);
       if (!active) return;
       setMessages(((data as Message[] | null) ?? []).map(decryptMessage));
+      // latest live location from the other person (last 10 min)
+      const { data: loc } = await supabase
+        .from("cx_locations").select("member_id,lat,lng,created_at")
+        .eq("kind", "live").order("created_at", { ascending: false }).limit(5);
+      const peer = (loc ?? []).find((l: any) => l.member_id !== me.id);
+      if (peer && Date.now() - new Date(peer.created_at).getTime() < 10 * 60000)
+        setPeerLive({ lat: peer.lat, lng: peer.lng, at: new Date(peer.created_at).getTime() });
     })();
 
     const ch = supabase
       .channel("cx_rt")
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "cx_messages" },
-        (payload) => {
-          const m = decryptMessage(payload.new as Message);
-          setMessages((prev) => (prev.some((x) => x.id === m.id) ? prev : [...prev, m]));
-        }
-      )
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "cx_sos_events" },
-        (payload) => {
-          const e = payload.new as { member_id: string; lat?: number; lng?: number; created_at: string };
-          // the owner is alerted when the other person triggers SOS
-          if (isOwner && e.member_id !== me.id) {
-            setSosAlert({ lat: e.lat, lng: e.lng, at: e.created_at });
-          }
-        }
-      )
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "cx_messages" }, (p) => {
+        const m = decryptMessage(p.new as Message);
+        setMessages((prev) => (prev.some((x) => x.id === m.id) ? prev : [...prev, m]));
+      })
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "cx_sos_events" }, (p) => {
+        const e = p.new as { member_id: string; lat?: number; lng?: number; created_at: string };
+        if (isOwner && e.member_id !== me.id) setSosAlert({ lat: e.lat, lng: e.lng, at: e.created_at });
+      })
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "cx_locations" }, (p) => {
+        const l = p.new as { member_id: string; lat: number; lng: number; kind: string };
+        if (l.member_id !== me.id && l.kind === "live")
+          setPeerLive({ lat: l.lat, lng: l.lng, at: Date.now() });
+      })
       .subscribe();
     return () => {
       active = false;
@@ -93,23 +96,32 @@ export function Chat({ me, onLock }: { me: Member; onLock: () => void }) {
     };
   }, [isOwner, me.id]);
 
+  // cleanup live watch on unmount
+  useEffect(() => {
+    return () => {
+      if (watchRef.current != null) navigator.geolocation.clearWatch(watchRef.current);
+      if (liveTimerRef.current) clearTimeout(liveTimerRef.current);
+    };
+  }, []);
+
   useEffect(() => {
     logRef.current?.scrollTo({ top: logRef.current.scrollHeight });
   }, [messages]);
+
+  async function insert(row: Record<string, unknown>) {
+    const { error } = await supabase.from("cx_messages").insert(row);
+    if (error) throw error;
+  }
 
   async function sendText() {
     const text = draft.trim();
     if (!text || !them) return;
     setDraft("");
-    const { error } = await supabase.from("cx_messages").insert({
-      sender_id: me.id,
-      recipient_id: them.id,
-      content_type: "text",
-      ciphertext: encrypt(text),
-    });
-    if (error) {
+    try {
+      await insert({ sender_id: me.id, recipient_id: them.id, content_type: "text", ciphertext: encrypt(text) });
+    } catch (e: any) {
       setDraft(text);
-      alert("Send failed: " + error.message);
+      alert("Send failed: " + (e?.message || e));
     }
   }
 
@@ -118,22 +130,9 @@ export function Chat({ me, onLock }: { me: Member; onLock: () => void }) {
     const kind = kindOf(file.type || "application/octet-stream");
     setBusy(`Sending ${kind}…`);
     try {
-      const bytes = await blobToBytes(file);
-      const path = await uploadEncrypted(me.id, bytes);
-      const meta: MediaMeta = {
-        name: file.name,
-        mime: file.type || "application/octet-stream",
-        size: file.size,
-        kind,
-      };
-      const { error } = await supabase.from("cx_messages").insert({
-        sender_id: me.id,
-        recipient_id: them.id,
-        content_type: kind,
-        media_path: path,
-        ciphertext: encrypt(JSON.stringify(meta)),
-      });
-      if (error) throw error;
+      const path = await uploadEncrypted(me.id, await blobToBytes(file));
+      const meta: MediaMeta = { name: file.name, mime: file.type || "application/octet-stream", size: file.size, kind };
+      await insert({ sender_id: me.id, recipient_id: them.id, content_type: kind, media_path: path, ciphertext: encrypt(JSON.stringify(meta)) });
     } catch (e: any) {
       alert("Send failed: " + (e?.message || e));
     } finally {
@@ -150,33 +149,18 @@ export function Chat({ me, onLock }: { me: Member; onLock: () => void }) {
 
   function getPosition(): Promise<GeolocationPosition> {
     return new Promise((resolve, reject) =>
-      navigator.geolocation.getCurrentPosition(resolve, reject, {
-        enableHighAccuracy: true,
-        timeout: 15000,
-        maximumAge: 0,
-      })
+      navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 })
     );
   }
 
-  async function shareLocation() {
+  async function shareCurrent() {
     setMenuOpen(false);
     if (!them) return;
     setBusy("Getting location…");
     try {
       const pos = await getPosition();
-      const meta: MediaMeta = {
-        mime: "application/geo",
-        kind: "location",
-        lat: pos.coords.latitude,
-        lng: pos.coords.longitude,
-        accuracy: pos.coords.accuracy,
-      };
-      await supabase.from("cx_messages").insert({
-        sender_id: me.id,
-        recipient_id: them.id,
-        content_type: "location",
-        ciphertext: encrypt(JSON.stringify(meta)),
-      });
+      const meta: MediaMeta = { mime: "application/geo", kind: "location", lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy };
+      await insert({ sender_id: me.id, recipient_id: them.id, content_type: "location", ciphertext: encrypt(JSON.stringify(meta)) });
     } catch {
       alert("Couldn't get location. Please allow location permission.");
     } finally {
@@ -184,27 +168,46 @@ export function Chat({ me, onLock }: { me: Member; onLock: () => void }) {
     }
   }
 
-  async function recordAudio(ms: number): Promise<{ path: string; dur: number } | null> {
+  async function startLive(hours: number) {
+    setMenuOpen(false);
+    if (!them || !hours || hours <= 0) return;
+    const until = Date.now() + hours * 3600 * 1000;
+    setMyLiveUntil(until);
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mime = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "audio/mp4";
-      const rec = new MediaRecorder(stream, { mimeType: mime });
-      const chunks: Blob[] = [];
-      const started = Date.now();
-      rec.ondataavailable = (ev) => ev.data.size && chunks.push(ev.data);
-      const done = new Promise<void>((res) => (rec.onstop = () => res()));
-      rec.start();
-      await new Promise((r) => setTimeout(r, ms));
-      rec.stop();
-      await done;
-      stream.getTracks().forEach((t) => t.stop());
-      const blob = new Blob(chunks, { type: mime });
-      const bytes = await blobToBytes(blob);
-      const path = await uploadEncrypted(me.id, bytes);
-      return { path, dur: Math.round((Date.now() - started) / 1000) };
-    } catch {
-      return null;
+      const meta: MediaMeta = { mime: "application/geo", kind: "location", live: true, until } as any;
+      await insert({ sender_id: me.id, recipient_id: them.id, content_type: "location", ciphertext: encrypt(JSON.stringify(meta)) });
+    } catch {}
+    // begin watching; push updates (throttled) to cx_locations
+    if (watchRef.current != null) navigator.geolocation.clearWatch(watchRef.current);
+    watchRef.current = navigator.geolocation.watchPosition(
+      async (pos) => {
+        const now = Date.now();
+        if (now - lastLiveInsert.current < 15000) return;
+        lastLiveInsert.current = now;
+        await supabase.from("cx_locations").insert({
+          member_id: me.id, lat: pos.coords.latitude, lng: pos.coords.longitude,
+          accuracy: pos.coords.accuracy, kind: "live",
+        });
+      },
+      () => {},
+      { enableHighAccuracy: true, maximumAge: 10000, timeout: 20000 }
+    );
+    if (liveTimerRef.current) clearTimeout(liveTimerRef.current);
+    liveTimerRef.current = setTimeout(stopLive, hours * 3600 * 1000);
+  }
+
+  function stopLive() {
+    if (watchRef.current != null) {
+      navigator.geolocation.clearWatch(watchRef.current);
+      watchRef.current = null;
     }
+    if (liveTimerRef.current) clearTimeout(liveTimerRef.current);
+    setMyLiveUntil(null);
+  }
+
+  function customLive() {
+    const h = Number(prompt("Share live location for how many hours?", "2"));
+    if (h && h > 0) startLive(h);
   }
 
   // ---- SOS ----
@@ -215,43 +218,26 @@ export function Chat({ me, onLock }: { me: Member; onLock: () => void }) {
     let lat: number | undefined, lng: number | undefined, acc: number | undefined;
     try {
       const pos = await getPosition();
-      lat = pos.coords.latitude;
-      lng = pos.coords.longitude;
-      acc = pos.coords.accuracy;
-    } catch {
-      /* continue without location */
-    }
-    // record a short audio clip (best-effort)
-    const audio = await recordAudio(8000);
+      lat = pos.coords.latitude; lng = pos.coords.longitude; acc = pos.coords.accuracy;
+    } catch {}
     try {
-      await supabase.from("cx_sos_events").insert({
-        member_id: me.id,
-        trigger: "manual",
-        lat,
-        lng,
-        audio_path: audio?.path ?? null,
-        status: "active",
-      });
-      // also drop it into the chat so it's visible both sides
+      // 1) alert admin immediately
+      await supabase.from("cx_sos_events").insert({ member_id: me.id, trigger: "manual", lat, lng, status: "active" });
       const meta: MediaMeta = { mime: "application/geo", kind: "location", lat, lng, accuracy: acc, sos: true };
-      await supabase.from("cx_messages").insert({
-        sender_id: me.id,
-        recipient_id: them.id,
-        content_type: "location",
-        ciphertext: encrypt(JSON.stringify(meta)),
-      });
-      if (audio) {
-        const vmeta: MediaMeta = { mime: "audio", kind: "voice", dur: audio.dur };
-        await supabase.from("cx_messages").insert({
-          sender_id: me.id,
-          recipient_id: them.id,
-          content_type: "voice",
-          media_path: audio.path,
-          ciphertext: encrypt(JSON.stringify(vmeta)),
-        });
-      }
+      await insert({ sender_id: me.id, recipient_id: them.id, content_type: "location", ciphertext: encrypt(JSON.stringify(meta)) });
+      // 2) start live location for 1 hour
+      startLive(1);
+      // 3) record 30s audio and post it
+      setBusy("SOS sent — recording audio (30s)…");
+      const rec = new WavRecorder();
+      await rec.start();
+      await new Promise((r) => setTimeout(r, 30000));
+      const { blob, dur } = rec.stop();
+      const path = await uploadEncrypted(me.id, await blobToBytes(blob));
+      const vmeta: MediaMeta = { mime: "audio/wav", kind: "voice", dur };
+      await insert({ sender_id: me.id, recipient_id: them.id, content_type: "voice", media_path: path, ciphertext: encrypt(JSON.stringify(vmeta)) });
     } catch (e: any) {
-      alert("SOS failed: " + (e?.message || e));
+      alert("SOS error: " + (e?.message || e));
     } finally {
       setBusy("");
       setSosActive(false);
@@ -260,78 +246,69 @@ export function Chat({ me, onLock }: { me: Member; onLock: () => void }) {
 
   async function toggleRecord() {
     if (recording) {
-      recRef.current?.stop();
+      const rec = voiceRecRef.current;
+      voiceRecRef.current = null;
+      setRecording(false);
+      if (!rec || !them) return;
+      const { blob, dur } = rec.stop();
+      if (blob.size < 1000) return;
+      setBusy("Sending voice…");
+      try {
+        const path = await uploadEncrypted(me.id, await blobToBytes(blob));
+        const meta: MediaMeta = { mime: "audio/wav", kind: "voice", dur };
+        await insert({ sender_id: me.id, recipient_id: them.id, content_type: "voice", media_path: path, ciphertext: encrypt(JSON.stringify(meta)) });
+      } catch (e: any) {
+        alert("Voice send failed: " + (e?.message || e));
+      } finally {
+        setBusy("");
+      }
       return;
     }
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mime = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "audio/mp4";
-      const rec = new MediaRecorder(stream, { mimeType: mime });
-      chunksRef.current = [];
-      const started = Date.now();
-      rec.ondataavailable = (ev) => ev.data.size && chunksRef.current.push(ev.data);
-      rec.onstop = async () => {
-        stream.getTracks().forEach((t) => t.stop());
-        setRecording(false);
-        const blob = new Blob(chunksRef.current, { type: mime });
-        if (blob.size < 500 || !them) return;
-        setBusy("Sending voice…");
-        try {
-          const bytes = await blobToBytes(blob);
-          const path = await uploadEncrypted(me.id, bytes);
-          const meta: MediaMeta = { mime, size: blob.size, kind: "voice", dur: Math.round((Date.now() - started) / 1000) };
-          await supabase.from("cx_messages").insert({
-            sender_id: me.id,
-            recipient_id: them.id,
-            content_type: "voice",
-            media_path: path,
-            ciphertext: encrypt(JSON.stringify(meta)),
-          });
-        } catch (e: any) {
-          alert("Voice send failed: " + (e?.message || e));
-        } finally {
-          setBusy("");
-        }
-      };
-      recRef.current = rec;
-      rec.start();
+      const rec = new WavRecorder();
+      await rec.start();
+      voiceRecRef.current = rec;
       setRecording(true);
     } catch {
       alert("Microphone permission is needed to record a voice message.");
     }
   }
 
+  const peerLiveActive = peerLive && Date.now() - peerLive.at < 3 * 60000;
+
   return (
     <div className="screen chat">
       <div className="top">
         <div>
           <div className="name">{them?.display_name ?? "Chat"}</div>
-          <div className="pill">
-            {isOwner ? "full archive" : "clears after 24h"} · encrypted
-          </div>
+          <div className="pill">{isOwner ? "full archive" : "clears after 24h"} · encrypted</div>
         </div>
-        <button className="sos-btn" onClick={triggerSOS} disabled={sosActive} title="Emergency">
-          SOS
-        </button>
-        <button className="lock" title="Hide" onClick={onLock}>
-          ⌂
-        </button>
+        <button className="sos-btn" onClick={triggerSOS} disabled={sosActive} title="Emergency">SOS</button>
+        <button className="lock" title="Hide" onClick={onLock}>⌂</button>
       </div>
 
       {sosAlert && (
         <div className="sos-banner">
-          🆘 Emergency alert from {them?.display_name ?? "them"} ·{" "}
+          🆘 Emergency from {them?.display_name ?? "them"} ·{" "}
           {new Date(sosAlert.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
           {sosAlert.lat != null && (
-            <a
-              href={`https://maps.google.com/?q=${sosAlert.lat},${sosAlert.lng}`}
-              target="_blank"
-              rel="noreferrer"
-            >
-              Open location
-            </a>
+            <a href={`https://maps.google.com/?q=${sosAlert.lat},${sosAlert.lng}`} target="_blank" rel="noreferrer">Open location</a>
           )}
           <button onClick={() => setSosAlert(null)}>✕</button>
+        </div>
+      )}
+
+      {peerLiveActive && (
+        <div className="live-banner">
+          🟢 {them?.display_name ?? "They"} sharing live location
+          <a href={`https://maps.google.com/?q=${peerLive!.lat},${peerLive!.lng}`} target="_blank" rel="noreferrer">Open latest</a>
+        </div>
+      )}
+      {myLiveUntil && (
+        <div className="live-banner me">
+          🟢 You're sharing live location until{" "}
+          {new Date(myLiveUntil).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+          <button onClick={stopLive}>Stop</button>
         </div>
       )}
 
@@ -342,11 +319,7 @@ export function Chat({ me, onLock }: { me: Member; onLock: () => void }) {
           const t = new Date(m.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
           return (
             <div key={m.id} className={`bubble ${mine ? "me" : "you"}`}>
-              {m.content_type === "text" ? (
-                m._plain
-              ) : (
-                <MediaBubble msg={m} isOwner={isOwner} onView={setViewer} />
-              )}
+              {m.content_type === "text" ? m._plain : <MediaBubble msg={m} isOwner={isOwner} onView={setViewer} />}
               <div className="meta">{t}</div>
             </div>
           );
@@ -358,20 +331,19 @@ export function Chat({ me, onLock }: { me: Member; onLock: () => void }) {
       <div className="composer">
         <input ref={galleryRef} type="file" accept="image/*,video/*" style={{ display: "none" }} onChange={onPickFile} />
         <input ref={docRef} type="file" style={{ display: "none" }} onChange={onPickFile} />
-
         <div className="attach-wrap">
-          <button className="icon-btn" title="Attach" onClick={() => setMenuOpen((v) => !v)}>
-            ＋
-          </button>
+          <button className="icon-btn" title="Attach" onClick={() => setMenuOpen((v) => !v)}>＋</button>
           {menuOpen && (
             <div className="attach-menu">
               <button onClick={() => galleryRef.current?.click()}>🖼 Photo / Video</button>
               <button onClick={() => docRef.current?.click()}>📄 Document</button>
-              <button onClick={shareLocation}>📍 Location</button>
+              <button onClick={shareCurrent}>📍 Current location</button>
+              <button onClick={() => startLive(8)}>🟢 Live · 8 hours</button>
+              <button onClick={() => startLive(24)}>🟢 Live · 24 hours</button>
+              <button onClick={customLive}>🟢 Live · custom…</button>
             </div>
           )}
         </div>
-
         <input
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
@@ -398,21 +370,10 @@ export function Chat({ me, onLock }: { me: Member; onLock: () => void }) {
   );
 }
 
-// ---- Media rendering ----
-function MediaBubble({
-  msg,
-  isOwner,
-  onView,
-}: {
-  msg: Message;
-  isOwner: boolean;
-  onView: (url: string) => void;
-}) {
+function MediaBubble({ msg, isOwner, onView }: { msg: Message; isOwner: boolean; onView: (url: string) => void }) {
   const [url, setUrl] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
   const meta = msg._meta;
-
-  // Location has no media_path — render directly.
   const isLocation = msg.content_type === "location";
 
   useEffect(() => {
@@ -435,14 +396,19 @@ function MediaBubble({
   }, [msg.media_path]);
 
   if (isLocation) {
+    const live = (meta as any)?.live;
     const maps = `https://maps.google.com/?q=${meta?.lat},${meta?.lng}`;
     return (
       <div className={`loc ${meta?.sos ? "sos" : ""}`}>
-        <div className="loc-ic">{meta?.sos ? "🆘" : "📍"}</div>
+        <div className="loc-ic">{meta?.sos ? "🆘" : live ? "🟢" : "📍"}</div>
         <div className="loc-body">
-          <div className="loc-t">{meta?.sos ? "Emergency location" : "Shared location"}</div>
+          <div className="loc-t">
+            {meta?.sos ? "Emergency location" : live ? "Live location started" : "Shared location"}
+          </div>
           {meta?.lat != null ? (
             <a href={maps} target="_blank" rel="noreferrer">Open in Maps</a>
+          ) : live ? (
+            <span className="loc-sub">tracking… see the live banner above</span>
           ) : (
             <span className="loc-sub">location unavailable</span>
           )}
@@ -457,32 +423,27 @@ function MediaBubble({
   const kind = msg.content_type;
   const dl = meta?.name || `file.${(meta?.mime || "bin").split("/")[1] || "bin"}`;
 
-  if (kind === "image") {
+  if (kind === "image")
     return (
       <div className="media">
         <img src={url} alt="" className="media-img" onClick={() => onView(url)} />
         <a className="dl" href={url} download={dl}>⬇ Download</a>
       </div>
     );
-  }
-  if (kind === "video") {
+  if (kind === "video")
     return (
       <div className="media">
         <video src={url} controls controlsList="nodownload" className="media-vid" />
         <a className="dl" href={url} download={dl}>⬇ Download</a>
       </div>
     );
-  }
-  if (kind === "voice") {
+  if (kind === "voice")
     return (
       <div className="media">
         <audio src={url} controls controlsList="nodownload" className="media-aud" />
-        {/* voice download only on the admin (owner) side */}
-        {isOwner && <a className="dl" href={url} download={dl || "voice.webm"}>⬇ Download</a>}
+        {isOwner && <a className="dl" href={url} download={dl || "voice.wav"}>⬇ Download</a>}
       </div>
     );
-  }
-  // document
   return (
     <div className="media file">
       <span className="file-ic">📄</span>
