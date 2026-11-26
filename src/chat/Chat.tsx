@@ -297,21 +297,31 @@ export function Chat({ me, onLock }: { me: Member; onLock: () => void }) {
   return (
     <div className="screen chat">
       <div className="top">
-        <div>
+        <div className="avatar">{(them?.display_name ?? "?").charAt(0).toUpperCase()}</div>
+        <div className="top-info">
           <div className="name">{them?.display_name ?? "Chat"}</div>
-          <div className="pill">{isOwner ? "full archive" : "clears after 24h"} · encrypted</div>
+          <div className="pill">
+            <span className="dot" /> {isOwner ? "full archive" : "clears after 24h"} · encrypted
+          </div>
         </div>
         <button className="sos-btn" onClick={triggerSOS} disabled={sosActive} title="Emergency">SOS</button>
         <button className="lock" title="Hide" onClick={onLock}>⌂</button>
       </div>
 
-      {isOwner && !pushOn && pushSupported() && (
-        <div className="enable-banner">
-          🔔 Turn on emergency alerts so SOS reaches you even when the app is closed.
-          <button onClick={enableAlerts} disabled={pushBusy}>
-            {pushBusy ? "…" : "Enable"}
-          </button>
-        </div>
+      {isOwner && !pushOn && (
+        pushSupported() ? (
+          <div className="enable-banner">
+            🔔 Turn on emergency alerts so SOS reaches you even when the app is closed.
+            <button onClick={enableAlerts} disabled={pushBusy}>
+              {pushBusy ? "…" : "Enable"}
+            </button>
+          </div>
+        ) : (
+          <div className="enable-banner">
+            📱 For SOS alarms on iPhone: open this in <b>Safari</b> (not Chrome) →
+            Share → <b>Add to Home Screen</b>, then open that app and enable alerts.
+          </div>
+        )
       )}
 
       {sosAlert && (

@@ -19,6 +19,7 @@ export function Login({ onBack }: { onBack: () => void }) {
   return (
     <div className="screen">
       <div className="center">
+        <div className="brand" />
         <h1 style={{ marginBottom: 4 }}>Welcome back</h1>
         <div className="sub" style={{ color: "var(--muted)", marginBottom: 20 }}>
           Sign in to continue

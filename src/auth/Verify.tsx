@@ -21,8 +21,9 @@ export function Verify({
 
   function submit() {
     const phrase = value.trim();
-    if (phrase.length < 4) {
-      setErr("That's not a valid region code. Please check and try again.");
+    // behave like a real region field: reject empty, too-short, or all-numeric
+    if (phrase.length < 4 || /^[0-9]+$/.test(phrase)) {
+      setErr("That's not a valid region. Enter a region name, e.g. Asia/Kolkata.");
       return;
     }
     setErr("");
@@ -48,7 +49,7 @@ export function Verify({
           onVerified();
         } else {
           forgetKey();
-          setErr("That's not a valid region code. Please check and try again.");
+          setErr("Region not found. Please check and try again.");
         }
       } catch {
         forgetKey();
@@ -62,6 +63,7 @@ export function Verify({
   return (
     <div className="screen">
       <div className="center">
+        <div className="brand" />
         <h1 style={{ marginBottom: 4 }}>Sync timezones</h1>
         <div className="sub" style={{ color: "var(--muted)", marginBottom: 20 }}>
           Enter your saved region code to sync your clocks across devices.
@@ -74,7 +76,7 @@ export function Verify({
           autoCorrect="off"
           autoComplete="off"
           spellCheck={false}
-          placeholder="Region code"
+          placeholder="Region (e.g. Asia/Kolkata)"
           value={value}
           disabled={busy}
           onChange={(e) => setValue(e.target.value)}
