@@ -4,7 +4,7 @@ import { decrypt, encrypt } from "../crypto";
 import { uploadEncrypted, downloadDecrypted, blobToBytes } from "./media";
 import { WavRecorder } from "./wav";
 import { enablePush, isPushEnabled, pushSupported, fireSosPush, fireUrgentNudge } from "../push";
-import { IconPlus, IconSend, IconMic, IconStop, IconImage, IconDoc, IconPin, IconLive, IconSos, IconHome, IconExit, IconStar, IconPhone, IconVideo, IconEndCall } from "./icons";
+import { IconPlus, IconSend, IconMic, IconStop, IconImage, IconDoc, IconPin, IconLive, IconSos, IconHome, IconExit, IconStar, IconPhone, IconVideo, IconEndCall, IconMore, IconInfo } from "./icons";
 import { CallScreen, type ActiveCall } from "./CallScreen";
 import "emoji-picker-element";
 import type { Member, Message, MediaMeta } from "../types";
@@ -54,6 +54,11 @@ export function Chat({ me, onLock, onExit }: { me: Member; onLock: () => void; o
   const [starredView, setStarredView] = useState(false);
   const [activeCall, setActiveCall] = useState<ActiveCall | null>(null);
   const [incoming, setIncoming] = useState<{ id: string; kind: "voice" | "video"; callerId: string } | null>(null);
+  const [peerPresent, setPeerPresent] = useState(false);
+  const [peerLastSeen, setPeerLastSeen] = useState<number | null>(null);
+  const [nowTick, setNowTick] = useState(Date.now());
+  const [overflowOpen, setOverflowOpen] = useState(false);
+  const [infoOpen, setInfoOpen] = useState(false);
   const pressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const REACTIONS = ["❤️", "😂", "👍", "😮", "😢", "🙏"];
@@ -72,6 +77,41 @@ export function Chat({ me, onLock, onExit }: { me: Member; onLock: () => void; o
     supabase.from("cx_members").select("*").neq("id", me.id).limit(1)
       .then(({ data }) => setThem((data?.[0] as Member) ?? null));
   }, [me.id]);
+
+  // presence: green = other is in the chat now; away/offline from last_seen
+  useEffect(() => {
+    if (!them) return;
+    const otherId = them.id;
+    const beat = () =>
+      supabase.from("cx_members").update({ last_seen: new Date().toISOString() }).eq("id", me.id);
+    beat();
+    const hb = setInterval(beat, 60000);
+
+    const fetchSeen = async () => {
+      const { data } = await supabase.from("cx_members").select("last_seen").eq("id", otherId).maybeSingle();
+      const ls = (data as any)?.last_seen;
+      setPeerLastSeen(ls ? new Date(ls).getTime() : null);
+    };
+    fetchSeen();
+    const poll = setInterval(fetchSeen, 45000);
+
+    const pres = supabase.channel("cx_presence", { config: { presence: { key: me.id } } });
+    pres.on("presence", { event: "sync" }, () => {
+      const state: any = pres.presenceState();
+      setPeerPresent(Array.isArray(state[otherId]) && state[otherId].length > 0);
+    });
+    pres.subscribe((st) => {
+      if (st === "SUBSCRIBED") pres.track({ at: Date.now() });
+    });
+
+    const tick = setInterval(() => setNowTick(Date.now()), 20000);
+    return () => {
+      clearInterval(hb);
+      clearInterval(poll);
+      clearInterval(tick);
+      supabase.removeChannel(pres);
+    };
+  }, [them?.id, me.id]);
 
   // check whether push alerts are set up on this device (both roles)
   useEffect(() => {
@@ -408,34 +448,67 @@ export function Chat({ me, onLock, onExit }: { me: Member; onLock: () => void; o
   }
 
   const peerLiveActive = peerLive && Date.now() - peerLive.at < 3 * 60000;
+  const peerStatus: "online" | "away" | "offline" = peerPresent
+    ? "online"
+    : peerLastSeen && nowTick - peerLastSeen < 10 * 60000
+    ? "away"
+    : "offline";
+  const statusLabel = peerStatus === "online" ? "Online" : peerStatus === "away" ? "Away" : "Offline";
 
   return (
     <div className="screen chat">
       <div className="top">
-        <div className="avatar">{(them?.display_name ?? "?").charAt(0).toUpperCase()}</div>
+        <div className="avatar">
+          {(them?.display_name ?? "?").charAt(0).toUpperCase()}
+          <span className={`presence ${peerStatus}`}>{peerStatus === "offline" ? "×" : ""}</span>
+        </div>
         <div className="top-info">
-          <div className="name">{them?.display_name ?? "Chat"}</div>
-          <div className="pill">
-            <span className="dot" /> {isOwner ? "full archive" : "clears after 24h"} · encrypted
-          </div>
+          <div className="status-word">{statusLabel}</div>
         </div>
         <button className="ic-top" title="Voice call" onClick={() => startCall("voice")}><IconPhone size={17} /></button>
         <button className="ic-top" title="Video call" onClick={() => startCall("video")}><IconVideo size={18} /></button>
-        {isOwner && (
-          <button
-            className={`ic-top ${starredView ? "active" : ""}`}
-            title="Starred messages"
-            onClick={() => setStarredView((v) => !v)}
-          >
-            <IconStar size={19} fill={starredView} />
-          </button>
-        )}
         <button className="sos-btn" onClick={triggerSOS} disabled={sosActive} title="Emergency">
           <IconSos size={15} /> SOS
         </button>
-        <button className="ic-top" title="Home" onClick={onLock}><IconHome size={20} /></button>
-        <button className="ic-top exit" title="Exit" onClick={onExit}><IconExit size={20} /></button>
+        <div className="overflow-wrap">
+          <button className="ic-top" title="More" onClick={() => setOverflowOpen((v) => !v)}><IconMore size={20} /></button>
+          {overflowOpen && <div className="menu-backdrop" onClick={() => setOverflowOpen(false)} />}
+          {overflowOpen && (
+            <div className="overflow-menu" onClick={() => setOverflowOpen(false)}>
+              {isOwner && (
+                <button onClick={() => setStarredView((v) => !v)}>
+                  <IconStar size={16} fill={starredView} /> {starredView ? "All messages" : "Starred"}
+                </button>
+              )}
+              <button onClick={() => setInfoOpen(true)}><IconInfo size={16} /> Info</button>
+              <button onClick={onLock}><IconHome size={16} /> Home</button>
+              <button className="danger" onClick={onExit}><IconExit size={16} /> Exit</button>
+            </div>
+          )}
+        </div>
       </div>
+
+      {infoOpen && (
+        <div className="info-overlay" onClick={() => setInfoOpen(false)}>
+          <div className="info-card" onClick={(e) => e.stopPropagation()}>
+            <div className="info-dot-row">
+              <span className="presence online" /> Online · in the app
+            </div>
+            <div className="info-dot-row">
+              <span className="presence away" /> Reachable · app closed
+            </div>
+            <div className="info-dot-row">
+              <span className="presence offline">×</span> Offline · no connection
+            </div>
+            <div className="info-sep" />
+            <div className="info-line">🔒 End-to-end encrypted</div>
+            <div className="info-line">
+              {isOwner ? "🗄 You keep the full archive." : "⏳ Your messages clear after 24 hours."}
+            </div>
+            <button className="btn" onClick={() => setInfoOpen(false)} style={{ marginTop: 14 }}>Close</button>
+          </div>
+        </div>
+      )}
 
       {!pushOn && (
         pushSupported() ? (
@@ -502,9 +575,6 @@ export function Chat({ me, onLock, onExit }: { me: Member; onLock: () => void; o
                 onPointerCancel={cancelPress}
                 onContextMenu={(e) => e.preventDefault()}
               >
-                {!isOwner && m.starred && (
-                  <div className="starred-note"><IconStar size={12} fill /> Admin starred this</div>
-                )}
                 {m.content_type === "text" ? m._plain : <MediaBubble msg={m} isOwner={isOwner} onView={setViewer} />}
                 {rx && rx.length > 0 && (
                   <div className="react-chips">
@@ -514,7 +584,10 @@ export function Chat({ me, onLock, onExit }: { me: Member; onLock: () => void; o
                   </div>
                 )}
                 <div className="meta">
-                  {isOwner && m.starred && <IconStar size={11} fill />} {t}
+                  {m.starred && (
+                    <span className="star-tag"><IconStar size={9} fill /> starred</span>
+                  )}
+                  {t}
                 </div>
               </div>
             );

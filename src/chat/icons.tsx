@@ -97,6 +97,14 @@ export const IconSpeaker = ({ size }: P) => (
     <path d="M15.5 8.5a5 5 0 0 1 0 7M18 6a8 8 0 0 1 0 12" />
   </svg>
 );
+export const IconMore = ({ size }: P) => (
+  <svg {...base(size)} fill="currentColor" stroke="none">
+    <circle cx="12" cy="5" r="1.8" /><circle cx="12" cy="12" r="1.8" /><circle cx="12" cy="19" r="1.8" />
+  </svg>
+);
+export const IconInfo = ({ size }: P) => (
+  <svg {...base(size)}><circle cx="12" cy="12" r="9" /><line x1="12" y1="11" x2="12" y2="16" /><circle cx="12" cy="7.8" r="0.6" fill="currentColor" /></svg>
+);
 export const IconFlip = ({ size }: P) => (
   <svg {...base(size)}>
     <rect x="3" y="7" width="18" height="12" rx="2" />
