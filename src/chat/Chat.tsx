@@ -7,6 +7,8 @@ export function Chat({ me, onLock }: { me: Member; onLock: () => void }) {
   const [them, setThem] = useState<Member | null>(null);
   const [keyReady, setKeyReady] = useState(hasKey());
   const [pass, setPass] = useState("");
+  const [unlocking, setUnlocking] = useState(false);
+  const [keyErr, setKeyErr] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState("");
   const logRef = useRef<HTMLDivElement>(null);
@@ -77,10 +79,24 @@ export function Chat({ me, onLock }: { me: Member; onLock: () => void }) {
   }, [messages]);
 
   function unlockKey() {
-    if (pass.trim().length < 4) return;
-    deriveKey(pass.trim());
-    setPass("");
-    setKeyReady(true);
+    if (pass.trim().length < 4) {
+      setKeyErr("Enter at least 4 characters.");
+      return;
+    }
+    setKeyErr("");
+    setUnlocking(true);
+    // defer a tick so the "Unlocking…" state paints before the heavy work
+    setTimeout(() => {
+      try {
+        deriveKey(pass.trim());
+        setPass("");
+        setKeyReady(true);
+      } catch (e) {
+        setKeyErr("Couldn't unlock on this device. Try again.");
+      } finally {
+        setUnlocking(false);
+      }
+    }, 40);
   }
 
   async function send() {
@@ -115,11 +131,13 @@ export function Chat({ me, onLock }: { me: Member; onLock: () => void }) {
             type="password"
             placeholder="Secret phrase"
             value={pass}
+            disabled={unlocking}
             onChange={(e) => setPass(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && unlockKey()}
           />
-          <button className="btn" onClick={unlockKey}>
-            Unlock
+          {keyErr && <div className="err">{keyErr}</div>}
+          <button className="btn" onClick={unlockKey} disabled={unlocking}>
+            {unlocking ? "Unlocking…" : "Unlock"}
           </button>
           <button className="btn ghost" onClick={onLock} style={{ marginTop: 8 }}>
             ← Back

@@ -7,7 +7,7 @@ import _sodium from "libsodium-wrappers";
 
 let sodium: typeof _sodium;
 let KEY: Uint8Array | null = null;
-const LS_KEY = "tz_dk"; // cached derived key (innocuous name)
+const LS_KEY = "tz_dk2"; // cached derived key (innocuous name)
 
 // Fixed app salt so both devices derive the same key from the same passphrase.
 // (Phase 1: a shared relationship between two known devices. Can be upgraded to a
@@ -35,12 +35,13 @@ export function hasKey(): boolean {
 export function deriveKey(passphrase: string) {
   const salt = sodium
     .crypto_generichash(sodium.crypto_pwhash_SALTBYTES, SALT_SEED);
+  // INTERACTIVE limits (64 MiB, 2 ops) — safe and fast on phones.
   KEY = sodium.crypto_pwhash(
     sodium.crypto_secretbox_KEYBYTES,
     passphrase.normalize("NFKC"),
     salt,
-    sodium.crypto_pwhash_OPSLIMIT_MODERATE,
-    sodium.crypto_pwhash_MEMLIMIT_MODERATE,
+    sodium.crypto_pwhash_OPSLIMIT_INTERACTIVE,
+    sodium.crypto_pwhash_MEMLIMIT_INTERACTIVE,
     sodium.crypto_pwhash_ALG_DEFAULT
   );
   localStorage.setItem(
