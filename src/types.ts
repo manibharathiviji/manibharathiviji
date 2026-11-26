@@ -38,8 +38,13 @@ export interface MediaMeta {
   name?: string;
   mime: string;
   size?: number;
-  kind: "image" | "video" | "document" | "voice";
+  kind: "image" | "video" | "document" | "voice" | "location";
   dur?: number; // seconds, for voice/video
+  // location
+  lat?: number;
+  lng?: number;
+  accuracy?: number;
+  sos?: boolean;
 }
 
 export interface Reaction {

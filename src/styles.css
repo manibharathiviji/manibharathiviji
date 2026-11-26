@@ -142,3 +142,37 @@ input { font: inherit; }
 .media.file .file-ic { font-size: 22px; }
 .media.file .file-nm { font-size: 13px; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .media.file .dl { font-size: 16px; }
+
+/* SOS */
+.sos-btn { margin-left: auto; background: var(--danger); color: #fff; border: none;
+  font-weight: 800; font-size: 13px; letter-spacing: .5px; padding: 7px 12px; border-radius: 10px; }
+.sos-btn:disabled { opacity: .6; }
+.top .lock { margin-left: 8px; }
+.sos-banner { display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  background: #7f1d1d; color: #fff; padding: 10px 14px; font-size: 13px; font-weight: 600; }
+.sos-banner a { color: #fecaca; font-weight: 700; }
+.sos-banner button { margin-left: auto; background: none; border: none; color: #fff; font-size: 16px; }
+
+/* attach menu */
+.attach-wrap { position: relative; flex: none; }
+.attach-menu { position: absolute; bottom: 52px; left: 0; background: var(--panel2);
+  border-radius: 12px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,.5); width: 190px; z-index: 30; }
+.attach-menu button { display: block; width: 100%; text-align: left; background: none; border: none;
+  color: var(--text); padding: 13px 16px; font-size: 15px; border-bottom: 1px solid #ffffff12; }
+.attach-menu button:last-child { border-bottom: none; }
+.attach-menu button:active { background: #ffffff14; }
+
+/* location card */
+.loc { display: flex; align-items: center; gap: 10px; }
+.loc-ic { font-size: 26px; }
+.loc-t { font-size: 14px; font-weight: 600; }
+.loc a { font-size: 13px; color: #bae6fd; }
+.loc-sub { font-size: 12px; color: var(--muted); }
+.loc.sos .loc-t { color: #fecaca; }
+
+/* fullscreen image viewer */
+.viewer { position: fixed; inset: 0; background: rgba(0,0,0,.92); z-index: 100;
+  display: flex; align-items: center; justify-content: center; }
+.viewer img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.viewer-close { position: absolute; top: 16px; right: 16px; background: #ffffff22;
+  color: #fff; border: none; width: 40px; height: 40px; border-radius: 50%; font-size: 18px; }
